@@ -1,0 +1,11 @@
+# GitHub Linguist Language Override
+# Memastikan repositori GitHub 100% terdeteksi sebagai HTML murni (lingkaran merah)
+*.html linguist-detectable=true
+*.js linguist-detectable=true
+*.css linguist-detectable=true
+
+# Abaikan file config dev tool agar tidak dihitung dalam statistik bahasa
+vite.config.ts linguist-vendored=true
+tsconfig.json linguist-vendored=true
+package.json linguist-vendored=true
+bun.lock linguist-vendored=true
