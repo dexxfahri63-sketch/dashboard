@@ -10,6 +10,8 @@ const KEY_ORDERS = 'dexxlaundry_orders_v3';
 const KEY_SERVICES = 'dexxlaundry_srv_v3';
 const KEY_CUSTOMERS = 'dexxlaundry_cust_v3';
 const KEY_CLEARED = 'dexxlaundry_orders_cleared_v3';
+const KEY_DELETED_ORDERS = 'dexxlaundry_deleted_orders_v3';
+const KEY_AUTH_SESSION = 'dexxlaundry_auth_session_v3';
 
 // Clean SVG Icon Library for Enterprise UI (Zero Keyboard Emojis)
 const ICONS = {
@@ -57,6 +59,12 @@ const DEFAULT_CONFIG = {
     measurementId: "G-BV9ZW5EX1G"
   },
   secretPin: 'admin123',
+  auth: {
+    cashierUsername: 'kasir',
+    cashierPassword: 'kasir123',
+    adminUsername: 'admin',
+    adminPassword: 'admin123'
+  },
   whatsappTemplate: `Halo Kak *{nama}*,
 Terima kasih telah mempercayakan cucian Anda di *{nama_laundry}* ({outlet}).
 
@@ -163,16 +171,186 @@ let appConfig = JSON.parse(localStorage.getItem(KEY_CONFIG) || 'null') || DEFAUL
 if (!appConfig.firebase || !appConfig.firebase.projectId) {
   appConfig.firebase = JSON.parse(JSON.stringify(DEFAULT_CONFIG.firebase));
 }
+if (!appConfig.auth) {
+  appConfig.auth = JSON.parse(JSON.stringify(DEFAULT_CONFIG.auth));
+}
 
-// Resilient Order Storage (Respects explicit deletion so dummy data doesn't revive on refresh)
-const isOrdersCleared = localStorage.getItem(KEY_CLEARED) === 'true';
+// Clean Order Storage (Zero auto-reviving dummy data: orders are empty unless fetched from cloud or explicitly saved)
+function getDeletedOrderIds() {
+  try {
+    return JSON.parse(localStorage.getItem(KEY_DELETED_ORDERS) || '[]');
+  } catch {
+    return [];
+  }
+}
+
+function addDeletedOrderId(id) {
+  if (!id) return;
+  const list = getDeletedOrderIds();
+  if (!list.includes(id)) {
+    list.push(id);
+    localStorage.setItem(KEY_DELETED_ORDERS, JSON.stringify(list.slice(-300)));
+  }
+}
+
 const rawSavedOrders = localStorage.getItem(KEY_ORDERS);
 let appOrders = [];
+try {
+  const parsed = rawSavedOrders ? JSON.parse(rawSavedOrders) : [];
+  const deletedIds = getDeletedOrderIds();
+  appOrders = Array.isArray(parsed) ? parsed.filter(o => !deletedIds.includes(o.id)) : [];
+} catch {
+  appOrders = [];
+}
 
-if (isOrdersCleared) {
-  appOrders = rawSavedOrders ? JSON.parse(rawSavedOrders) : [];
-} else {
-  appOrders = rawSavedOrders !== null ? JSON.parse(rawSavedOrders) : JSON.parse(JSON.stringify(DEMO_ORDERS));
+// Authentication Engine State
+let currentAuthUser = null;
+let selectedLoginRole = 'kasir';
+
+function initAuth() {
+  const sessionStr = sessionStorage.getItem(KEY_AUTH_SESSION) || localStorage.getItem(KEY_AUTH_SESSION);
+  if (sessionStr) {
+    try {
+      currentAuthUser = JSON.parse(sessionStr);
+    } catch {
+      currentAuthUser = null;
+    }
+  }
+
+  if (currentAuthUser) {
+    showMainApp();
+  } else {
+    showLoginScreen();
+  }
+}
+
+function showMainApp() {
+  const loginScreen = document.getElementById('loginScreen');
+  const appContainer = document.getElementById('appContainer');
+  if (loginScreen) loginScreen.style.display = 'none';
+  if (appContainer) appContainer.style.display = 'flex';
+  updateAuthUI();
+}
+
+function showLoginScreen() {
+  const loginScreen = document.getElementById('loginScreen');
+  const appContainer = document.getElementById('appContainer');
+  if (loginScreen) loginScreen.style.display = 'flex';
+  if (appContainer) appContainer.style.display = 'none';
+  selectLoginRole(selectedLoginRole || 'kasir');
+}
+
+function selectLoginRole(role) {
+  selectedLoginRole = role;
+  const btnKasir = document.getElementById('btnRoleKasir');
+  const btnAdmin = document.getElementById('btnRoleAdmin');
+  const submitText = document.getElementById('loginSubmitBtnText');
+  const authCfg = appConfig.auth || DEFAULT_CONFIG.auth;
+
+  if (role === 'admin') {
+    if (btnKasir) btnKasir.classList.remove('active');
+    if (btnAdmin) btnAdmin.classList.add('active');
+    if (submitText) submitText.textContent = 'Masuk sebagai Admin / Owner';
+    const userInp = document.getElementById('loginUsername');
+    if (userInp && (!userInp.value || userInp.value === authCfg.cashierUsername)) {
+      userInp.value = authCfg.adminUsername;
+    }
+  } else {
+    if (btnAdmin) btnAdmin.classList.remove('active');
+    if (btnKasir) btnKasir.classList.add('active');
+    if (submitText) submitText.textContent = 'Masuk sebagai Kasir (POS)';
+    const userInp = document.getElementById('loginUsername');
+    if (userInp && (!userInp.value || userInp.value === authCfg.adminUsername)) {
+      userInp.value = authCfg.cashierUsername;
+    }
+  }
+}
+
+function togglePasswordVisibility(inputId, btn) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  const isPwd = input.type === 'password';
+  input.type = isPwd ? 'text' : 'password';
+  if (btn) {
+    btn.innerHTML = isPwd
+      ? `<span class="svg-icon" style="width: 16px; height: 16px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9.88 9.88 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></svg></span>`
+      : `<span class="svg-icon" style="width: 16px; height: 16px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></span>`;
+  }
+}
+
+function fillQuickLogin(username, password) {
+  const userInp = document.getElementById('loginUsername');
+  const pwdInp = document.getElementById('loginPassword');
+  if (userInp) userInp.value = username;
+  if (pwdInp) pwdInp.value = password;
+  selectLoginRole(username === 'admin' ? 'admin' : 'kasir');
+}
+
+function handleLoginSubmit(event) {
+  if (event) event.preventDefault();
+  const username = document.getElementById('loginUsername')?.value.trim();
+  const password = document.getElementById('loginPassword')?.value;
+  const remember = document.getElementById('rememberMeCheckbox')?.checked;
+  const errAlert = document.getElementById('loginErrorAlert');
+  const errText = document.getElementById('loginErrorText');
+
+  const authCfg = appConfig.auth || DEFAULT_CONFIG.auth;
+
+  let matched = null;
+
+  if (username === authCfg.cashierUsername && password === authCfg.cashierPassword) {
+    matched = { username, role: 'kasir', name: 'Kasir Toko', avatar: 'KS', title: 'Operator Kasir' };
+  } else if (username === authCfg.adminUsername && password === authCfg.adminPassword) {
+    matched = { username, role: 'admin', name: 'Admin (Owner)', avatar: 'AD', title: 'Administrator' };
+  } else if (username === 'admin' && password === (appConfig.secretPin || 'admin123')) {
+    matched = { username: 'admin', role: 'admin', name: 'Admin (Owner)', avatar: 'AD', title: 'Administrator' };
+  }
+
+  if (!matched) {
+    if (errAlert) errAlert.classList.add('active');
+    if (errText) errText.textContent = 'Username atau kata sandi tidak valid. Silakan periksa kembali.';
+    return;
+  }
+
+  if (errAlert) errAlert.classList.remove('active');
+  currentAuthUser = matched;
+
+  const sessionData = JSON.stringify(matched);
+  if (remember) {
+    localStorage.setItem(KEY_AUTH_SESSION, sessionData);
+  } else {
+    sessionStorage.setItem(KEY_AUTH_SESSION, sessionData);
+  }
+
+  showMainApp();
+  showToast(`Selamat datang, ${matched.name}! Sesi kasir aktif.`);
+}
+
+function handleLogout() {
+  localStorage.removeItem(KEY_AUTH_SESSION);
+  sessionStorage.removeItem(KEY_AUTH_SESSION);
+  currentAuthUser = null;
+  showLoginScreen();
+  showToast('Anda telah keluar dari sistem kasir.');
+}
+
+function updateAuthUI() {
+  if (!currentAuthUser) return;
+  const hName = document.getElementById('headerUserName');
+  const hRole = document.getElementById('headerUserRole');
+  const hAvatar = document.getElementById('headerUserAvatar');
+
+  const sName = document.getElementById('sidebarUserName');
+  const sRole = document.getElementById('sidebarUserRole');
+  const sAvatar = document.getElementById('sidebarUserAvatar');
+
+  if (hName) hName.textContent = currentAuthUser.name;
+  if (hRole) hRole.textContent = currentAuthUser.role.toUpperCase();
+  if (hAvatar) hAvatar.textContent = currentAuthUser.avatar;
+
+  if (sName) sName.textContent = currentAuthUser.name;
+  if (sRole) sRole.textContent = currentAuthUser.role.toUpperCase();
+  if (sAvatar) sAvatar.textContent = currentAuthUser.avatar;
 }
 
 let appServices = JSON.parse(localStorage.getItem(KEY_SERVICES) || 'null') || DEMO_SERVICES;
@@ -265,12 +443,13 @@ function deleteOrder(orderId) {
   const target = appOrders.find(o => o.id === orderId);
   const orderNum = target ? target.orderNumber : '';
 
+  addDeletedOrderId(orderId);
   appOrders = appOrders.filter(o => o.id !== orderId);
   saveOrders();
   deleteOrderFromCloud(orderId, orderNum);
   renderDashboard();
   renderOrdersTab();
-  showToast(`Transaksi ${orderNum} berhasil dihapus.`);
+  showToast(`Transaksi ${orderNum} berhasil dihapus permanen.`);
 }
 
 /**
@@ -285,7 +464,7 @@ function openClearAllModal() {
   const modal = document.getElementById('confirmDeleteModal');
   if (modal) {
     document.getElementById('confirmModalTitle').textContent = 'Hapus Semua Data Transaksi?';
-    document.getElementById('confirmModalDesc').textContent = `Tindakan ini akan menghapus seluruh (${appOrders.length}) transaksi saat ini sehingga dashboard bersih dan siap untuk klien baru.`;
+    document.getElementById('confirmModalDesc').textContent = `Tindakan ini akan menghapus seluruh (${appOrders.length}) transaksi saat ini secara permanen dari browser dan Firebase Cloud sehingga database benar-benar bersih.`;
     modal.classList.add('active');
   }
 }
@@ -294,6 +473,7 @@ function openClearAllModal() {
  * Execute Clear All Orders
  */
 function executeClearAllOrders() {
+  appOrders.forEach(o => addDeletedOrderId(o.id));
   appOrders = [];
   saveOrders();
   localStorage.setItem(KEY_CLEARED, 'true');
@@ -301,19 +481,23 @@ function executeClearAllOrders() {
   closeModal('confirmDeleteModal');
   renderDashboard();
   renderOrdersTab();
-  showToast('Semua data transaksi dummy berhasil dihapus! Database sekarang bersih.');
+  showToast('Semua data transaksi berhasil dihapus permanen dari cloud & browser!');
 }
 
 /**
- * Load Demo Orders for Testing
+ * Load Demo Orders for Testing (Only when explicitly clicked by user)
  */
 function loadDemoOrders() {
-  appOrders = JSON.parse(JSON.stringify(DEMO_ORDERS));
+  localStorage.removeItem(KEY_DELETED_ORDERS);
   localStorage.removeItem(KEY_CLEARED);
+  appOrders = JSON.parse(JSON.stringify(DEMO_ORDERS));
   saveOrders();
+  if (firestoreDb) {
+    seedOrdersToFirestore(appOrders);
+  }
   renderDashboard();
   renderOrdersTab();
-  showToast('Data contoh berhasil dimuat kembali.');
+  showToast('Data contoh berhasil dimuat.');
 }
 
 function saveOrders() {
@@ -1122,22 +1306,29 @@ function setupFirestoreRealtimeListener() {
       // Sort newest first
       cloudOrders.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
 
-      if (cloudOrders.length > 0) {
-        appOrders = cloudOrders;
+      // Filter out any orders that were explicitly deleted by the user
+      const deletedIds = getDeletedOrderIds();
+
+      // If Firestore still contains an order that was marked deleted locally, purge it from Firestore
+      cloudOrders.forEach((ord) => {
+        if (deletedIds.includes(ord.id)) {
+          deleteOrderFromCloud(ord.id, ord.orderNumber);
+        }
+      });
+
+      const activeCloudOrders = cloudOrders.filter(ord => !deletedIds.includes(ord.id));
+
+      if (activeCloudOrders.length > 0) {
+        appOrders = activeCloudOrders;
         saveOrders();
         renderDashboard();
         renderOrdersTab();
-      } else if (snapshot.empty) {
-        const isCleared = localStorage.getItem(KEY_CLEARED) === 'true';
-        if (!isCleared && appOrders.length > 0) {
-          // If Firestore is empty initially, seed local orders to cloud so other devices see them
-          seedOrdersToFirestore(appOrders);
-        } else {
-          appOrders = [];
-          saveOrders();
-          renderDashboard();
-          renderOrdersTab();
-        }
+      } else {
+        // If Firestore is empty or all orders were deleted, NEVER auto-seed dummy data!
+        appOrders = [];
+        saveOrders();
+        renderDashboard();
+        renderOrdersTab();
       }
 
       updateCloudStatusBadge(true, 'Firebase: Terhubung (Realtime)');
@@ -1383,6 +1574,12 @@ function openSecretConfigModal() {
   setVal('cfgFirebaseAuthDomain', fb.authDomain || DEFAULT_FIREBASE_CONFIG.authDomain);
   setVal('cfgFirebaseApiKey', fb.apiKey || DEFAULT_FIREBASE_CONFIG.apiKey);
 
+  const auth = appConfig.auth || DEFAULT_CONFIG.auth;
+  setVal('cfgCashierUsername', auth.cashierUsername || 'kasir');
+  setVal('cfgCashierPassword', auth.cashierPassword || 'kasir123');
+  setVal('cfgAdminUsername', auth.adminUsername || 'admin');
+  setVal('cfgAdminPassword', auth.adminPassword || 'admin123');
+
   setVal('cfgSecretPin', appConfig.secretPin || 'admin123');
   setVal('cfgWhatsappTpl', appConfig.whatsappTemplate || DEFAULT_CONFIG.whatsappTemplate);
 
@@ -1413,6 +1610,12 @@ function saveSecretConfigFromModal() {
   appConfig.firebase.authDomain = getVal('cfgFirebaseAuthDomain', DEFAULT_FIREBASE_CONFIG.authDomain);
   appConfig.firebase.apiKey = getVal('cfgFirebaseApiKey', DEFAULT_FIREBASE_CONFIG.apiKey);
 
+  if (!appConfig.auth) appConfig.auth = {};
+  appConfig.auth.cashierUsername = getVal('cfgCashierUsername', 'kasir');
+  appConfig.auth.cashierPassword = getVal('cfgCashierPassword', 'kasir123');
+  appConfig.auth.adminUsername = getVal('cfgAdminUsername', 'admin');
+  appConfig.auth.adminPassword = getVal('cfgAdminPassword', 'admin123');
+
   appConfig.secretPin = getVal('cfgSecretPin', 'admin123');
   appConfig.whatsappTemplate = getVal('cfgWhatsappTpl', DEFAULT_CONFIG.whatsappTemplate);
 
@@ -1420,7 +1623,7 @@ function saveSecretConfigFromModal() {
   initFirebase();
   renderDashboard();
   closeModal('secretConfigModal');
-  showToast('Konfigurasi klien & Firebase berhasil disimpan secara dinamis!');
+  showToast('Konfigurasi klien, akun login, & Firebase berhasil disimpan!');
 }
 
 function applyPresetColor(colorHex) {
@@ -1555,6 +1758,7 @@ function closeMobileSidebar() {
 // DOM Ready Init
 document.addEventListener('DOMContentLoaded', () => {
   applyTheme();
+  initAuth();
   renderDashboard();
   setupSecretTriggers();
   initFirebase();

@@ -11,14 +11,120 @@
   <link rel="stylesheet" href="style.css">
   <!-- Firebase SDK via CDN (100% Pure Vanilla JS, Zero Build / Zero Bundler) -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-analytics-compat.js"></script>
 </head>
 <body>
+  <!-- AUTHENTICATION & LOGIN SCREEN (Gated Access) -->
+  <div id="loginScreen" class="login-wrapper">
+    <div class="login-card">
+      <div class="login-brand-header">
+        <div class="login-brand-icon">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect width="18" height="18" x="3" y="3" rx="3"/>
+            <circle cx="12" cy="13" r="5"/>
+            <path d="M12 10a3 3 0 0 0-3 3"/>
+            <circle cx="7" cy="7" r="1" fill="currentColor"/>
+            <circle cx="10" cy="7" r="1" fill="currentColor"/>
+          </svg>
+        </div>
+        <h1 class="login-brand-title" id="loginBrandTitle">DEXX<span class="brand-accent">LAUNDRY</span></h1>
+        <p class="login-brand-desc">Portal Sistem Kasir & Manajemen Laundry</p>
+      </div>
+
+      <!-- Role Selection Tabs -->
+      <div class="login-role-tabs">
+        <button type="button" class="login-role-btn active" id="btnRoleKasir" onclick="selectLoginRole('kasir')">
+          <span class="svg-icon" style="width: 14px; height: 14px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/>
+              <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>
+            </svg>
+          </span>
+          <span>Kasir (POS)</span>
+        </button>
+        <button type="button" class="login-role-btn" id="btnRoleAdmin" onclick="selectLoginRole('admin')">
+          <span class="svg-icon" style="width: 14px; height: 14px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+          </span>
+          <span>Owner / Admin</span>
+        </button>
+      </div>
+
+      <!-- Error Alert -->
+      <div id="loginErrorAlert" class="login-error-alert">
+        <span class="svg-icon" style="width: 16px; height: 16px; flex-shrink: 0;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+        </span>
+        <span id="loginErrorText">Username atau kata sandi tidak valid.</span>
+      </div>
+
+      <form id="loginForm" onsubmit="handleLoginSubmit(event)" style="display: flex; flex-direction: column; gap: 14px;">
+        <div class="form-group">
+          <label class="form-label" for="loginUsername">Username atau ID</label>
+          <input type="text" id="loginUsername" class="form-input" placeholder="Masukkan username" required autocomplete="username" />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="loginPassword">Kata Sandi (Password)</label>
+          <div class="login-input-group">
+            <input type="password" id="loginPassword" class="form-input" placeholder="Masukkan password" required autocomplete="current-password" />
+            <button type="button" class="btn-toggle-pwd" onclick="togglePasswordVisibility('loginPassword', this)" title="Lihat kata sandi">
+              <span class="svg-icon" style="width: 16px; height: 16px;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>
+                </svg>
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem;">
+          <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--text-secondary); user-select: none;">
+            <input type="checkbox" id="rememberMeCheckbox" checked style="accent-color: var(--accent-primary);" />
+            <span>Ingat sesi di perangkat ini</span>
+          </label>
+          <span style="color: var(--text-muted); font-size: 0.6875rem;">Akses Terproteksi</span>
+        </div>
+
+        <button type="submit" class="btn-primary" style="width: 100%; justify-content: center; padding: 12px; margin-top: 4px; font-weight: 700; font-size: 0.875rem;">
+          <span class="svg-icon" style="width: 16px; height: 16px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/>
+            </svg>
+          </span>
+          <span id="loginSubmitBtnText">Masuk sebagai Kasir</span>
+        </button>
+      </form>
+
+      <!-- Quick Fill Credentials Helpers -->
+      <div class="quick-credential-box">
+        <div class="quick-credential-title">
+          <span>Akses Cepat (Klik untuk Isi):</span>
+        </div>
+        <div class="quick-chips-row">
+          <button type="button" class="quick-chip-btn" onclick="fillQuickLogin('kasir', 'kasir123')">
+            <strong>Kasir Toko</strong>
+            User: kasir • Sandi: kasir123
+          </button>
+          <button type="button" class="quick-chip-btn" onclick="fillQuickLogin('admin', 'admin123')">
+            <strong>Owner / Admin</strong>
+            User: admin • Sandi: admin123
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Mobile Backdrop -->
   <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeMobileSidebar()"></div>
 
-  <div class="app-container">
+  <div class="app-container" id="appContainer">
     <!-- Sidebar -->
     <aside class="sidebar">
       <div class="sidebar-brand" id="sidebarBrandTitle" title="DEXXLAUNDRY">
@@ -121,7 +227,7 @@
       </ul>
 
       <div class="sidebar-footer">
-        <div class="outlet-chip">
+        <div class="outlet-chip" style="margin-bottom: 10px;">
           <div style="display: flex; align-items: center; gap: 8px; overflow: hidden;">
             <span class="svg-icon">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -131,6 +237,23 @@
             <span id="currentOutletDisplay" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Cabang Utama (Pusat)</span>
           </div>
           <span style="font-size: 0.6875rem; color: #34D399; font-weight: 700;">Active</span>
+        </div>
+
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 4px; font-size: 0.75rem; border-top: 1px solid var(--border-color); padding-top: 10px;">
+          <div style="display: flex; align-items: center; gap: 8px; overflow: hidden;">
+            <div class="user-avatar-chip" id="sidebarUserAvatar" style="width: 26px; height: 26px; font-size: 0.6875rem;">KS</div>
+            <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+              <div id="sidebarUserName" style="font-weight: 700; color: var(--text-primary); font-size: 0.75rem;">Kasir Toko</div>
+              <div id="sidebarUserRole" style="font-size: 0.625rem; color: var(--accent-primary); font-weight: 700;">KASIR</div>
+            </div>
+          </div>
+          <button onclick="handleLogout()" title="Keluar dari Sistem" style="background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 4px; border-radius: 6px; display: flex; align-items: center; transition: color 0.15s;" onmouseover="this.style.color='#F87171'" onmouseout="this.style.color='var(--text-muted)'">
+            <span class="svg-icon" style="width: 14px; height: 14px;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+              </svg>
+            </span>
+          </button>
         </div>
       </div>
     </aside>
@@ -179,6 +302,23 @@
             </span>
             <span>Order Baru</span>
           </button>
+
+          <!-- User Profile & Logout Chip -->
+          <div class="user-profile-badge" id="headerUserProfile">
+            <div class="user-avatar-chip" id="headerUserAvatar">KS</div>
+            <div class="user-meta-text">
+              <span class="user-name-text" id="headerUserName">Kasir Toko</span>
+              <span class="user-role-text" id="headerUserRole">KASIR</span>
+            </div>
+            <button class="btn-logout-chip" onclick="handleLogout()" title="Keluar / Logout dari Sistem">
+              <span class="svg-icon" style="width: 13px; height: 13px;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+                </svg>
+              </span>
+              <span>Keluar</span>
+            </button>
+          </div>
         </div>
       </header>
 
@@ -835,8 +975,43 @@
           </div>
         </div>
 
+        <!-- Login Account Credentials Configuration -->
+        <div style="background-color: var(--bg-surface); padding: 14px; border-radius: var(--border-radius-custom); border: 1px solid var(--border-color); margin-bottom: 12px;">
+          <div style="font-size: 0.8125rem; font-weight: 700; color: #FFFFFF; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+            <span class="svg-icon" style="width: 14px; height: 14px; color: var(--accent-primary);">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
+            </span>
+            <span>Pengaturan Akun & Kata Sandi Login</span>
+          </div>
+          <p style="font-size: 0.6875rem; color: var(--text-secondary); margin-bottom: 10px;">
+            Atur kredensial login untuk operator kasir dan administrator pemilik laundry agar web tidak dapat diakses publik tanpa izin.
+          </p>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 8px;">
+            <div class="form-group">
+              <label class="form-label" style="font-size: 0.6875rem;">Username Kasir</label>
+              <input type="text" id="cfgCashierUsername" class="form-input" placeholder="kasir" style="font-size: 0.75rem;" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" style="font-size: 0.6875rem;">Password Kasir</label>
+              <input type="text" id="cfgCashierPassword" class="form-input" placeholder="kasir123" style="font-size: 0.75rem;" />
+            </div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div class="form-group">
+              <label class="form-label" style="font-size: 0.6875rem;">Username Admin (Owner)</label>
+              <input type="text" id="cfgAdminUsername" class="form-input" placeholder="admin" style="font-size: 0.75rem;" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" style="font-size: 0.6875rem;">Password Admin (Owner)</label>
+              <input type="text" id="cfgAdminPassword" class="form-input" placeholder="admin123" style="font-size: 0.75rem;" />
+            </div>
+          </div>
+        </div>
+
         <div class="form-group">
-          <label class="form-label">PIN Rahasia Baru</label>
+          <label class="form-label">PIN Rahasia Baru (Untuk Panel Rahasia)</label>
           <input type="text" id="cfgSecretPin" class="form-input" placeholder="admin123" />
         </div>
 
@@ -1047,6 +1222,6 @@
   </div>
 
   <!-- Standalone Pure JS Engine -->
-  <script src="script.js?v=2"></script>
+  <script src="script.js?v=3"></script>
 </body>
 </html>
