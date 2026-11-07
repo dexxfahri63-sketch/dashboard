@@ -47,10 +47,14 @@ const DEFAULT_CONFIG = {
     textColor: '#F8FAFC',
     borderRadius: '12px'
   },
-  supabase: {
-    url: '',
-    anonKey: '',
-    isConnected: false
+  firebase: {
+    apiKey: "AIzaSyDmLSvUrOw0U_aLNkctFMKKo5AavJCHYc4",
+    authDomain: "web-wedding-4d4ce.firebaseapp.com",
+    projectId: "web-wedding-4d4ce",
+    storageBucket: "web-wedding-4d4ce.firebasestorage.app",
+    messagingSenderId: "904409888717",
+    appId: "1:904409888717:web:04ae72355daf6e11067684",
+    measurementId: "G-BV9ZW5EX1G"
   },
   secretPin: 'admin123',
   whatsappTemplate: `Halo Kak *{nama}*,
@@ -149,8 +153,16 @@ const DEMO_ORDERS = [
   }
 ];
 
+// Firebase Cloud Firestore & Multi-Device Realtime Engine (CDN Vanilla JS)
+let firebaseApp = null;
+let firestoreDb = null;
+let firestoreOrdersUnsubscribe = null;
+
 // App State Initialization
 let appConfig = JSON.parse(localStorage.getItem(KEY_CONFIG) || 'null') || DEFAULT_CONFIG;
+if (!appConfig.firebase || !appConfig.firebase.projectId) {
+  appConfig.firebase = JSON.parse(JSON.stringify(DEFAULT_CONFIG.firebase));
+}
 
 // Resilient Order Storage (Respects explicit deletion so dummy data doesn't revive on refresh)
 const isOrdersCleared = localStorage.getItem(KEY_CLEARED) === 'true';
@@ -239,7 +251,6 @@ function switchTab(tabId) {
   if (tabId === 'customers') renderCustomersTab();
   if (tabId === 'services') renderServicesTab();
   if (tabId === 'reports') renderReportsTab();
-  if (tabId === 'supabase') renderSupabaseTab();
 }
 
 // -------------------------------------------------------------
@@ -256,6 +267,7 @@ function deleteOrder(orderId) {
 
   appOrders = appOrders.filter(o => o.id !== orderId);
   saveOrders();
+  deleteOrderFromCloud(orderId, orderNum);
   renderDashboard();
   renderOrdersTab();
   showToast(`Transaksi ${orderNum} berhasil dihapus.`);
@@ -285,6 +297,7 @@ function executeClearAllOrders() {
   appOrders = [];
   saveOrders();
   localStorage.setItem(KEY_CLEARED, 'true');
+  clearOrdersInCloud();
   closeModal('confirmDeleteModal');
   renderDashboard();
   renderOrdersTab();
@@ -460,6 +473,7 @@ function advanceOrderStatus(orderId) {
   if (curIdx >= 0 && curIdx < workflow.length - 1) {
     order.status = workflow[curIdx + 1];
     saveOrders();
+    updateOrderStatusInCloud(order.id, order.status, order.paymentStatus);
     renderDashboard();
     renderOrdersTab();
     showToast(`Status transaksi diupdate ke: ${order.status}`);
@@ -557,6 +571,7 @@ function togglePaymentStatus(orderId) {
   if (!order) return;
   order.paymentStatus = order.paymentStatus === 'LUNAS' ? 'BELUM_LUNAS' : 'LUNAS';
   saveOrders();
+  updateOrderStatusInCloud(order.id, order.status, order.paymentStatus);
   renderOrdersTab();
   renderDashboard();
   showToast(`Status pembayaran: ${order.paymentStatus === 'LUNAS' ? 'Lunas' : 'Belum Lunas'}`);
@@ -723,6 +738,7 @@ function submitPosOrder(afterAction) {
 
   appOrders.unshift(newOrder);
   saveOrders();
+  saveOrderToCloud(newOrder);
 
   const existingCust = appCustomers.find(c => c.name.toLowerCase() === name.toLowerCase() || (phone && c.phone === phone));
   if (existingCust) {
@@ -985,14 +1001,296 @@ function exportCsvReport() {
   link.remove();
 }
 
-function renderSupabaseTab() {}
+// -------------------------------------------------------------
+// FIREBASE FIRESTORE CLOUD REALTIME & MULTI-DEVICE SYNC ENGINE
+// -------------------------------------------------------------
 
-function copySupabaseSql() {
-  const sql = document.getElementById('supabaseSqlCode')?.innerText;
-  if (sql) {
-    navigator.clipboard.writeText(sql);
-    showToast('SQL DDL & Index Script berhasil disalin!');
+const DEFAULT_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDmLSvUrOw0U_aLNkctFMKKo5AavJCHYc4",
+  authDomain: "web-wedding-4d4ce.firebaseapp.com",
+  projectId: "web-wedding-4d4ce",
+  storageBucket: "web-wedding-4d4ce.firebasestorage.app",
+  messagingSenderId: "904409888717",
+  appId: "1:904409888717:web:04ae72355daf6e11067684",
+  measurementId: "G-BV9ZW5EX1G"
+};
+
+/**
+ * Initialize Firebase SDK via pure CDN
+ * Runs on every device that opens the link, syncing to the same cloud Firestore
+ */
+function initFirebase() {
+  if (typeof firebase === 'undefined') {
+    console.warn('Firebase SDK script is loading from CDN...');
+    setTimeout(initFirebase, 600);
+    return;
   }
+
+  const fbConfig = (appConfig && appConfig.firebase && appConfig.firebase.projectId)
+    ? appConfig.firebase
+    : DEFAULT_FIREBASE_CONFIG;
+
+  try {
+    if (!firebase.apps || firebase.apps.length === 0) {
+      firebaseApp = firebase.initializeApp(fbConfig);
+    } else {
+      firebaseApp = firebase.app();
+    }
+
+    firestoreDb = firebase.firestore();
+
+    if (fbConfig.measurementId && typeof firebase.analytics === 'function') {
+      try { firebase.analytics(); } catch (e) {}
+    }
+
+    updateCloudStatusBadge(true, 'Firebase: Terhubung (Realtime)');
+    setupFirestoreRealtimeListener();
+  } catch (err) {
+    console.error('Firebase initialization error:', err);
+    updateCloudStatusBadge(false, 'Firebase: Offline (Lokal)');
+  }
+}
+
+/**
+ * Update Header Cloud Status Badge
+ */
+function updateCloudStatusBadge(isOnline, customText) {
+  const badge = document.getElementById('cloudStatusBadge');
+  const text = document.getElementById('cloudStatusText');
+  if (!badge || !text) return;
+
+  if (isOnline) {
+    badge.classList.remove('offline');
+    badge.classList.add('online');
+    text.textContent = customText || 'Firebase: Terhubung (Realtime)';
+  } else {
+    badge.classList.remove('online');
+    badge.classList.add('offline');
+    text.textContent = customText || 'Firebase: Mode Offline';
+  }
+}
+
+/**
+ * Setup Realtime Snapshot Listener on Firestore 'orders' Collection
+ * Ensures that any change created from any device (cashier laptop, owner phone)
+ * is immediately dispatched to all other devices in realtime!
+ */
+function setupFirestoreRealtimeListener() {
+  if (!firestoreDb) return;
+
+  if (firestoreOrdersUnsubscribe) {
+    try { firestoreOrdersUnsubscribe(); } catch (e) {}
+  }
+
+  try {
+    firestoreOrdersUnsubscribe = firestoreDb.collection('orders').onSnapshot((snapshot) => {
+      const cloudOrders = [];
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        let itemsList = [];
+        try {
+          if (Array.isArray(data.items)) {
+            itemsList = data.items;
+          } else if (typeof data.items === 'string') {
+            itemsList = JSON.parse(data.items);
+          }
+        } catch {
+          itemsList = [];
+        }
+
+        if (itemsList.length === 0) {
+          itemsList = [{ name: 'Layanan Laundry', qty: 1, unit: 'KG', unitPrice: Number(data.totalPrice) || 0, subtotal: Number(data.totalPrice) || 0 }];
+        }
+
+        cloudOrders.push({
+          id: data.id || doc.id,
+          orderNumber: data.orderNumber || doc.id,
+          customerName: data.customerName || 'Pelanggan',
+          customerPhone: data.customerPhone || '',
+          customerAddress: data.customerAddress || '',
+          outlet: data.outlet || appConfig.activeOutlet,
+          items: itemsList,
+          totalPrice: Number(data.totalPrice) || 0,
+          paymentMethod: data.paymentMethod || 'CASH',
+          paymentStatus: data.paymentStatus || 'BELUM_LUNAS',
+          status: data.status || 'MASUK',
+          createdAt: data.createdAt || new Date().toISOString().substring(0, 16).replace('T', ' '),
+          estimatedReady: data.estimatedReady || ''
+        });
+      });
+
+      // Sort newest first
+      cloudOrders.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+
+      if (cloudOrders.length > 0) {
+        appOrders = cloudOrders;
+        saveOrders();
+        renderDashboard();
+        renderOrdersTab();
+      } else if (snapshot.empty) {
+        const isCleared = localStorage.getItem(KEY_CLEARED) === 'true';
+        if (!isCleared && appOrders.length > 0) {
+          // If Firestore is empty initially, seed local orders to cloud so other devices see them
+          seedOrdersToFirestore(appOrders);
+        } else {
+          appOrders = [];
+          saveOrders();
+          renderDashboard();
+          renderOrdersTab();
+        }
+      }
+
+      updateCloudStatusBadge(true, 'Firebase: Terhubung (Realtime)');
+    }, (error) => {
+      console.warn('Firestore listener warning:', error.message);
+      if (error.code === 'permission-denied') {
+        updateCloudStatusBadge(false, 'Firebase: Izin Ditolak');
+        showToast('Firestore Rules belum aktif! Pastikan Rule read/write diizinkan di Firebase Console.');
+      } else {
+        updateCloudStatusBadge(false, 'Firebase: Offline');
+      }
+    });
+  } catch (err) {
+    console.error('Error starting Firestore listener:', err);
+  }
+}
+
+/**
+ * Seed initial orders to Firestore so newly connected devices immediately see history
+ */
+async function seedOrdersToFirestore(ordersList) {
+  if (!firestoreDb || !ordersList || ordersList.length === 0) return;
+  try {
+    const batch = firestoreDb.batch();
+    ordersList.forEach(ord => {
+      const ref = firestoreDb.collection('orders').doc(ord.id);
+      batch.set(ref, ord);
+    });
+    await batch.commit();
+  } catch (err) {
+    console.warn('Seeding note:', err.message);
+  }
+}
+
+/**
+ * Save new order to Firebase Cloud Firestore
+ */
+async function saveOrderToCloud(newOrder) {
+  if (!firestoreDb) return;
+
+  try {
+    await firestoreDb.collection('orders').doc(newOrder.id).set(newOrder);
+  } catch (err) {
+    console.warn('Failed to save order to Firestore:', err.message);
+  }
+}
+
+/**
+ * Delete order from Firebase Cloud Firestore
+ */
+async function deleteOrderFromCloud(orderId, orderNum) {
+  if (!firestoreDb) return;
+
+  try {
+    await firestoreDb.collection('orders').doc(orderId).delete();
+  } catch (err) {
+    console.warn('Failed to delete order from Firestore:', err.message);
+  }
+}
+
+/**
+ * Update order status in Firebase Cloud Firestore
+ */
+async function updateOrderStatusInCloud(orderId, newStatus, newPaymentStatus) {
+  if (!firestoreDb) return;
+
+  try {
+    const updateData = {};
+    if (newStatus) updateData.status = newStatus;
+    if (newPaymentStatus) updateData.paymentStatus = newPaymentStatus;
+
+    await firestoreDb.collection('orders').doc(orderId).update(updateData);
+  } catch (err) {
+    console.warn('Failed to update status in Firestore:', err.message);
+  }
+}
+
+/**
+ * Clear all orders in Firebase Cloud Firestore
+ */
+async function clearOrdersInCloud() {
+  if (!firestoreDb) return;
+
+  try {
+    const snapshot = await firestoreDb.collection('orders').get();
+    const batch = firestoreDb.batch();
+    snapshot.forEach((doc) => {
+      batch.delete(doc.ref);
+    });
+    await batch.commit();
+  } catch (err) {
+    console.warn('Failed to clear orders in Firestore:', err.message);
+  }
+}
+
+/**
+ * Test Firebase Connection from Secret Admin Modal
+ */
+async function testFirebaseConnection() {
+  const projectId = document.getElementById('cfgFirebaseProjectId')?.value.trim();
+  const apiKey = document.getElementById('cfgFirebaseApiKey')?.value.trim();
+
+  if (!projectId || !apiKey) {
+    showToast('Isi Project ID dan API Key terlebih dahulu.');
+    return;
+  }
+
+  showToast('Menguji koneksi ke Firebase Firestore...');
+
+  try {
+    if (firestoreDb) {
+      await firestoreDb.collection('orders').limit(1).get();
+      showToast('Koneksi Firebase Sukses! Firestore siap menyinkronkan antar device.');
+      updateCloudStatusBadge(true, 'Firebase: Terhubung (Realtime)');
+    } else {
+      initFirebase();
+      showToast('Koneksi Firebase diinisialisasi ulang.');
+    }
+  } catch (err) {
+    showToast('Koneksi Error: ' + (err.message || 'Periksa API Key dan Security Rules'));
+  }
+}
+
+/**
+ * Copy Firestore Security Rules Snippet
+ */
+function copyFirebaseRulesSnippet() {
+  const rules = `rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /{document=**} {\n      allow read, write: if true;\n    }\n  }\n}`;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(rules).then(() => {
+      showToast('Aturan Firestore berhasil disalin! Tempel di Firebase Console -> Firestore Rules.');
+    }).catch(() => {
+      prompt('Salin aturan Firestore ini:', rules);
+    });
+  } else {
+    prompt('Salin aturan Firestore ini:', rules);
+  }
+}
+
+/**
+ * Reset Firebase configuration to Default Project
+ */
+function resetToDefaultFirebase() {
+  appConfig.firebase = JSON.parse(JSON.stringify(DEFAULT_FIREBASE_CONFIG));
+  const pid = document.getElementById('cfgFirebaseProjectId');
+  const dom = document.getElementById('cfgFirebaseAuthDomain');
+  const key = document.getElementById('cfgFirebaseApiKey');
+  if (pid) pid.value = DEFAULT_FIREBASE_CONFIG.projectId;
+  if (dom) dom.value = DEFAULT_FIREBASE_CONFIG.authDomain;
+  if (key) key.value = DEFAULT_FIREBASE_CONFIG.apiKey;
+  saveConfig();
+  initFirebase();
+  showToast('Kredensial Firebase direset ke proyek default (web-wedding-4d4ce).');
 }
 
 // -------------------------------------------------------------
@@ -1022,6 +1320,16 @@ function setupSecretTriggers() {
       }
     });
   }
+
+  // Secret URL Hash Trigger (#admin or #secret)
+  if (window.location.hash === '#admin' || window.location.hash === '#secret') {
+    openSecretPinModal();
+  }
+  window.addEventListener('hashchange', () => {
+    if (window.location.hash === '#admin' || window.location.hash === '#secret') {
+      openSecretPinModal();
+    }
+  });
 }
 
 function openSecretPinModal() {
@@ -1057,40 +1365,62 @@ function openSecretConfigModal() {
   const modal = document.getElementById('secretConfigModal');
   if (!modal) return;
 
-  document.getElementById('cfgBusinessName').value = appConfig.businessName || 'DEXX';
-  document.getElementById('cfgBusinessAccent').value = appConfig.businessNameAccent || 'LAUNDRY';
-  document.getElementById('cfgTagline').value = appConfig.tagline || '';
-  document.getElementById('cfgWhatsapp').value = appConfig.whatsapp || '';
-  document.getElementById('cfgPhone').value = appConfig.phone || '';
-  document.getElementById('cfgAddress').value = appConfig.address || '';
-  document.getElementById('cfgColorAccent').value = appConfig.theme.accentColor || '#0D9488';
-  document.getElementById('cfgSupabaseUrl').value = appConfig.supabase.url || '';
-  document.getElementById('cfgSupabaseKey').value = appConfig.supabase.anonKey || '';
-  document.getElementById('cfgSecretPin').value = appConfig.secretPin || 'admin123';
-  document.getElementById('cfgWhatsappTpl').value = appConfig.whatsappTemplate || DEFAULT_CONFIG.whatsappTemplate;
+  const setVal = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) el.value = val !== undefined && val !== null ? val : '';
+  };
+
+  setVal('cfgBusinessName', appConfig.businessName || 'DEXX');
+  setVal('cfgBusinessAccent', appConfig.businessNameAccent || 'LAUNDRY');
+  setVal('cfgTagline', appConfig.tagline || '');
+  setVal('cfgWhatsapp', appConfig.whatsapp || '');
+  setVal('cfgPhone', appConfig.phone || '');
+  setVal('cfgAddress', appConfig.address || '');
+  setVal('cfgColorAccent', (appConfig.theme && appConfig.theme.accentColor) || '#0D9488');
+  
+  const fb = appConfig.firebase || DEFAULT_FIREBASE_CONFIG;
+  setVal('cfgFirebaseProjectId', fb.projectId || DEFAULT_FIREBASE_CONFIG.projectId);
+  setVal('cfgFirebaseAuthDomain', fb.authDomain || DEFAULT_FIREBASE_CONFIG.authDomain);
+  setVal('cfgFirebaseApiKey', fb.apiKey || DEFAULT_FIREBASE_CONFIG.apiKey);
+
+  setVal('cfgSecretPin', appConfig.secretPin || 'admin123');
+  setVal('cfgWhatsappTpl', appConfig.whatsappTemplate || DEFAULT_CONFIG.whatsappTemplate);
 
   modal.classList.add('active');
 }
 
 function saveSecretConfigFromModal() {
-  appConfig.businessName = document.getElementById('cfgBusinessName').value.trim() || 'DEXX';
-  appConfig.businessNameAccent = document.getElementById('cfgBusinessAccent').value.trim() || 'LAUNDRY';
-  appConfig.tagline = document.getElementById('cfgTagline').value.trim();
-  appConfig.whatsapp = document.getElementById('cfgWhatsapp').value.trim();
-  appConfig.phone = document.getElementById('cfgPhone').value.trim();
-  appConfig.address = document.getElementById('cfgAddress').value.trim();
-  const color = document.getElementById('cfgColorAccent').value;
+  const getVal = (id, fallback) => {
+    const el = document.getElementById(id);
+    return el && el.value ? el.value.trim() : fallback;
+  };
+
+  appConfig.businessName = getVal('cfgBusinessName', 'DEXX');
+  appConfig.businessNameAccent = getVal('cfgBusinessAccent', 'LAUNDRY');
+  appConfig.tagline = getVal('cfgTagline', '');
+  appConfig.whatsapp = getVal('cfgWhatsapp', '');
+  appConfig.phone = getVal('cfgPhone', '');
+  appConfig.address = getVal('cfgAddress', '');
+  
+  const colorEl = document.getElementById('cfgColorAccent');
+  const color = colorEl ? colorEl.value : '#0D9488';
+  if (!appConfig.theme) appConfig.theme = {};
   appConfig.theme.accentColor = color;
   appConfig.theme.accentHover = color;
-  appConfig.supabase.url = document.getElementById('cfgSupabaseUrl').value.trim();
-  appConfig.supabase.anonKey = document.getElementById('cfgSupabaseKey').value.trim();
-  appConfig.secretPin = document.getElementById('cfgSecretPin').value.trim() || 'admin123';
-  appConfig.whatsappTemplate = document.getElementById('cfgWhatsappTpl').value.trim();
+  
+  if (!appConfig.firebase) appConfig.firebase = {};
+  appConfig.firebase.projectId = getVal('cfgFirebaseProjectId', DEFAULT_FIREBASE_CONFIG.projectId);
+  appConfig.firebase.authDomain = getVal('cfgFirebaseAuthDomain', DEFAULT_FIREBASE_CONFIG.authDomain);
+  appConfig.firebase.apiKey = getVal('cfgFirebaseApiKey', DEFAULT_FIREBASE_CONFIG.apiKey);
+
+  appConfig.secretPin = getVal('cfgSecretPin', 'admin123');
+  appConfig.whatsappTemplate = getVal('cfgWhatsappTpl', DEFAULT_CONFIG.whatsappTemplate);
 
   saveConfig();
+  initFirebase();
   renderDashboard();
   closeModal('secretConfigModal');
-  showToast('Konfigurasi klien berhasil disimpan secara dinamis!');
+  showToast('Konfigurasi klien & Firebase berhasil disimpan secara dinamis!');
 }
 
 function applyPresetColor(colorHex) {
@@ -1227,6 +1557,7 @@ document.addEventListener('DOMContentLoaded', () => {
   applyTheme();
   renderDashboard();
   setupSecretTriggers();
+  initFirebase();
 
   const searchInput = document.getElementById('globalSearchInput');
   if (searchInput) {

@@ -326,6 +326,67 @@ body {
   gap: 12px;
 }
 
+/* Cloud Sync Status Chip */
+.cloud-status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-surface);
+  transition: var(--transition-fast);
+  user-select: none;
+}
+
+.cloud-status-chip:hover {
+  border-color: var(--border-hover);
+}
+
+.cloud-status-chip.online {
+  border-color: rgba(16, 185, 129, 0.4);
+  background-color: rgba(16, 185, 129, 0.12);
+  color: #34D399;
+}
+
+.cloud-status-chip.offline {
+  border-color: rgba(245, 158, 11, 0.4);
+  background-color: rgba(245, 158, 11, 0.12);
+  color: #FBBF24;
+}
+
+.status-indicator-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: currentColor;
+  box-shadow: 0 0 8px currentColor;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.cloud-status-chip.online .status-indicator-dot {
+  animation: pulseDot 2s infinite;
+}
+
+@keyframes pulseDot {
+  0% { transform: scale(0.95); opacity: 0.8; }
+  50% { transform: scale(1.2); opacity: 1; }
+  100% { transform: scale(0.95); opacity: 0.8; }
+}
+
+/* Sync Share Box in Secret Modal */
+.sync-share-box {
+  background-color: #050811;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 14px;
+  margin: 10px 0;
+}
+
 /* Buttons */
 .btn-primary {
   background-color: var(--accent-primary);
@@ -834,16 +895,18 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 100;
+  z-index: 9999;
   padding: 16px;
   opacity: 0;
   pointer-events: none;
+  visibility: hidden;
   transition: var(--transition-normal);
 }
 
 .modal-overlay.active {
   opacity: 1;
   pointer-events: auto;
+  visibility: visible;
 }
 
 .modal-box {

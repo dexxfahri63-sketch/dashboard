@@ -1,6 +1,6 @@
 {
   "name": "DEXXLAUNDRY - White-Label Laundry Dashboard & Secret Admin System",
-  "description": "Dashboard manajemen laundry multi-klien dengan panel konfigurasi dinamis rahasia, integrasi Supabase Auth & Database teroptimasi, kasir POS, dan export bundle HTML/CSS/JS.",
+  "description": "Dashboard manajemen laundry multi-klien dengan panel konfigurasi dinamis rahasia, integrasi Firebase Firestore Realtime Database, kasir POS, dan export bundle HTML/CSS/JS.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

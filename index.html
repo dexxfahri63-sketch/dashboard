@@ -4,11 +4,15 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>DEXXLAUNDRY - Dashboard Sistem Kasir & Manajemen Laundry</title>
-  <meta name="description" content="Dashboard manajemen laundry profesional dengan panel konfigurasi dinamis, integrasi Supabase, kasir POS cepat, struk thermal, dan notifikasi WhatsApp." />
+  <meta name="description" content="Dashboard manajemen laundry profesional dengan database cloud Firebase Firestore realtime, kasir POS cepat, struk thermal, dan notifikasi WhatsApp." />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <!-- Firebase SDK via CDN (100% Pure Vanilla JS, Zero Build / Zero Bundler) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-analytics-compat.js"></script>
 </head>
 <body>
   <!-- Mobile Backdrop -->
@@ -17,7 +21,7 @@
   <div class="app-container">
     <!-- Sidebar -->
     <aside class="sidebar">
-      <div class="sidebar-brand" id="sidebarBrandTitle" title="Klik 3x atau tekan Ctrl+Shift+X untuk Akses Panel Rahasia">
+      <div class="sidebar-brand" id="sidebarBrandTitle" title="DEXXLAUNDRY">
         <div class="sidebar-brand-title">
           <div class="brand-icon-wrap" id="sidebarBrandIcon">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -114,20 +118,6 @@
             </span>
           </button>
         </li>
-        <li class="sidebar-item">
-          <button class="sidebar-link" data-tab="supabase" onclick="switchTab('supabase')">
-            <span class="sidebar-link-content">
-              <span class="svg-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <ellipse cx="12" cy="5" rx="9" ry="3"/>
-                  <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
-                  <path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/>
-                </svg>
-              </span>
-              <span>Skema Supabase (Optimasi)</span>
-            </span>
-          </button>
-        </li>
       </ul>
 
       <div class="sidebar-footer">
@@ -142,18 +132,6 @@
           </div>
           <span style="font-size: 0.6875rem; color: #34D399; font-weight: 700;">Active</span>
         </div>
-
-        <button onclick="openSecretPinModal()" class="btn-secret-admin" style="justify-content: center; width: 100%;">
-          <span class="svg-icon" style="width: 14px; height: 14px;">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/>
-              <line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/>
-              <line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/>
-              <line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>
-            </svg>
-          </span>
-          <span>Panel Rahasia Klien</span>
-        </button>
       </div>
     </aside>
 
@@ -187,15 +165,12 @@
         </div>
 
         <div class="header-right">
-          <button onclick="openSecretPinModal()" class="btn-secret-admin" title="Shortcut Rahasia: Ctrl + Shift + X">
-            <span class="svg-icon" style="width: 14px; height: 14px;">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-              </svg>
-            </span>
-            <span>Panel Rahasia</span>
-            <span class="kbd-badge">Ctrl+Shift+X</span>
-          </button>
+          <!-- Cloud Realtime Sync Status Badge -->
+          <div id="cloudStatusBadge" class="cloud-status-chip offline" title="Status Database Cloud Firebase Firestore">
+            <span class="status-indicator-dot"></span>
+            <span id="cloudStatusText">Firebase: Menghubungkan...</span>
+          </div>
+
           <button onclick="switchTab('pos')" class="btn-primary">
             <span class="svg-icon" style="width: 14px; height: 14px;">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -347,30 +322,25 @@
                 </div>
                 <span>Pelanggan</span>
               </button>
-              <button onclick="openSecretPinModal()" class="quick-btn">
+              <button onclick="switchTab('services')" class="quick-btn">
                 <div class="quick-btn-icon">
                   <span class="svg-icon" style="width: 18px; height: 18px;">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/>
-                      <line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/>
-                      <line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/>
-                      <line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>
+                      <path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/><path d="M7 7h.01"/>
                     </svg>
                   </span>
                 </div>
-                <span>Panel Rahasia</span>
+                <span>Layanan & Tarif</span>
               </button>
-              <button onclick="loadDemoOrders()" class="quick-btn" title="Muat ulang data contoh">
+              <button onclick="switchTab('reports')" class="quick-btn" title="Lihat Laporan Keuangan">
                 <div class="quick-btn-icon">
                   <span class="svg-icon" style="width: 18px; height: 18px;">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
-                      <path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
-                      <path d="M8 16H3v5"/>
+                      <path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/>
                     </svg>
                   </span>
                 </div>
-                <span>Muat Data Demo</span>
+                <span>Laporan Kas</span>
               </button>
             </div>
 
@@ -686,86 +656,6 @@
           </div>
         </div>
       </section>
-
-      <!-- VIEW 7: SKEMA SUPABASE (OPTIMASI) -->
-      <section class="view-section page-container" id="view-supabase">
-        <div class="page-header-row">
-          <div>
-            <h1 class="page-title">Skema & Optimasi Database Supabase</h1>
-            <p class="page-subtitle">Model 1 Client = 1 Project dengan Composite Index B-Tree dan RLS Security</p>
-          </div>
-          <button onclick="copySupabaseSql()" class="btn-primary">
-            <span class="svg-icon" style="width: 14px; height: 14px;">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
-              </svg>
-            </span>
-            <span>Salin Script SQL Supabase</span>
-          </button>
-        </div>
-
-        <div style="background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius-custom); padding: 24px; margin-bottom: 20px;">
-          <h3 style="font-size: 1rem; font-weight: 800; color: var(--accent-primary); margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
-            <span class="svg-icon" style="width: 18px; height: 18px;">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-              </svg>
-            </span>
-            <span>Model Bisnis: 1 Klien = 1 Proyek Supabase Terisolasi</span>
-          </h3>
-          <p style="font-size: 0.8125rem; color: var(--text-secondary); line-height: 1.6;">
-            Untuk menjual jasa dashboard laundry ini, model 1 klien = 1 proyek Supabase memberikan <strong>keamanan isolasi 100%</strong> (data klien A tidak bisa dibaca klien B), biaya gratis (Supabase Free Tier), dan maintenance mandiri. Anda cukup menyalin file (<code>index.html</code>, <code>style.css</code>, <code>script.js</code>) ke repo GitHub tiap klien dan memasukkan URL serta Anon Key Supabase melalui Panel Rahasia.
-          </p>
-        </div>
-
-        <div style="background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius-custom); padding: 20px;">
-          <h3 style="font-size: 0.9375rem; font-weight: 800; color: var(--text-primary); margin-bottom: 12px;">
-            SQL Script DDL, Indexing & Triggers (Jalankan di Supabase SQL Editor):
-          </h3>
-          <pre id="supabaseSqlCode" style="background-color: #050811; padding: 16px; border-radius: 10px; font-family: monospace; font-size: 0.75rem; color: #94A3B8; overflow-x: auto; max-height: 400px; line-height: 1.5;">
--- 1. EXTENSIONS
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
--- 2. CLIENT CONFIGURATION (WHITE-LABEL SETTINGS)
-CREATE TABLE IF NOT EXISTS client_settings (
-    id VARCHAR(50) PRIMARY KEY DEFAULT 'current_config',
-    business_name VARCHAR(100) NOT NULL DEFAULT 'DEXX',
-    business_name_accent VARCHAR(100) NOT NULL DEFAULT 'LAUNDRY',
-    tagline VARCHAR(255) DEFAULT 'Solusi Cepat, Wangi & Bersih Higienis',
-    phone VARCHAR(30) DEFAULT '0812-3456-7890',
-    whatsapp VARCHAR(30) DEFAULT '6281234567890',
-    address TEXT DEFAULT 'Jl. Merdeka No. 45, Jakarta',
-    theme_config JSONB DEFAULT '{"accentColor": "#0D9488"}'::jsonb,
-    secret_pin VARCHAR(50) DEFAULT 'admin123',
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- 3. ORDERS TABLE WITH HIGH PERFORMANCE INDEXES
-CREATE TABLE IF NOT EXISTS orders (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    order_number VARCHAR(60) NOT NULL UNIQUE,
-    customer_name VARCHAR(150) NOT NULL,
-    customer_phone VARCHAR(40) NOT NULL,
-    customer_address TEXT,
-    outlet_name VARCHAR(100) NOT NULL DEFAULT 'Cabang Utama (Pusat)',
-    total_price NUMERIC(14,2) NOT NULL DEFAULT 0,
-    payment_method VARCHAR(30) NOT NULL DEFAULT 'CASH',
-    payment_status VARCHAR(30) NOT NULL DEFAULT 'BELUM_LUNAS',
-    status VARCHAR(30) NOT NULL DEFAULT 'MASUK',
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    estimated_ready TIMESTAMPTZ NOT NULL
-);
-
--- HIGH PERFORMANCE B-TREE COMPOSITE INDEXES
--- Mempercepat query filter status & cabang di dashboard di bawah 10ms
-CREATE INDEX IF NOT EXISTS idx_orders_outlet_status_created 
-ON orders (outlet_name, status, created_at DESC);
-
-CREATE INDEX IF NOT EXISTS idx_orders_customer_phone ON orders (customer_phone);
-CREATE INDEX IF NOT EXISTS idx_orders_order_number ON orders (order_number);
-          </pre>
-        </div>
-      </section>
     </main>
   </div>
 
@@ -808,7 +698,7 @@ CREATE INDEX IF NOT EXISTS idx_orders_order_number ON orders (order_number);
         Masukkan PIN rahasia untuk menyesuaikan branding, tema warna, nama bisnis, dan database tanpa menyentuh kode program.
       </p>
       <div class="form-group">
-        <input type="password" id="inputSecretPin" class="form-input" placeholder="Masukkan PIN (Default: admin123)" style="text-align: center; font-size: 1.125rem; letter-spacing: 0.2em;" />
+        <input type="password" id="inputSecretPin" class="form-input" placeholder="Masukkan PIN (Default: admin123)" onkeydown="if(event.key==='Enter') verifySecretPin()" style="text-align: center; font-size: 1.125rem; letter-spacing: 0.2em;" />
         <div id="pinErrorMsg" style="display: none; color: var(--accent-danger); font-size: 0.75rem; margin-top: 6px;"></div>
       </div>
       <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
@@ -889,18 +779,60 @@ CREATE INDEX IF NOT EXISTS idx_orders_order_number ON orders (order_number);
         <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 6px 0;" />
 
         <div>
-          <h4 style="font-size: 0.875rem; font-weight: 800; color: var(--accent-primary); margin-bottom: 4px;">Kredensial Supabase Klien</h4>
-          <p style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 8px;">Setiap klien memiliki project Supabase terpisah.</p>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <h4 style="font-size: 0.875rem; font-weight: 800; color: var(--accent-primary);">Kredensial Firebase Cloud Klien</h4>
+            <button type="button" onclick="testFirebaseConnection()" class="btn-secondary" style="font-size: 0.6875rem; padding: 4px 10px;">
+              <span class="svg-icon" style="width: 12px; height: 12px;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+                </svg>
+              </span>
+              <span>Uji Koneksi Firebase</span>
+            </button>
+          </div>
+          <p style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 8px;">
+            Terhubung ke Firebase Firestore (<code>web-wedding-4d4ce</code>). Seluruh perangkat (HP, laptop kasir, tablet) langsung tersinkronisasi realtime ke database cloud yang sama.
+          </p>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div class="form-group">
+            <label class="form-label">Firebase Project ID</label>
+            <input type="text" id="cfgFirebaseProjectId" class="form-input" placeholder="web-wedding-4d4ce" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Firebase Auth Domain</label>
+            <input type="text" id="cfgFirebaseAuthDomain" class="form-input" placeholder="web-wedding-4d4ce.firebaseapp.com" />
+          </div>
         </div>
 
         <div class="form-group">
-          <label class="form-label">Supabase Project URL</label>
-          <input type="text" id="cfgSupabaseUrl" class="form-input" placeholder="https://xyz.supabase.co" />
+          <label class="form-label">Firebase API Key</label>
+          <input type="password" id="cfgFirebaseApiKey" class="form-input" placeholder="AIzaSyDmLSvUrOw0U_aLNkctFMKKo5AavJCHYc4" />
         </div>
 
-        <div class="form-group">
-          <label class="form-label">Supabase Anon Key</label>
-          <input type="password" id="cfgSupabaseKey" class="form-input" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI..." />
+        <!-- Sync Share Box for Firebase Realtime -->
+        <div class="sync-share-box">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <div style="font-size: 0.8125rem; font-weight: 700; color: #FFFFFF;">Sinkronisasi Otomatis Antar Perangkat</div>
+            <span class="badge badge-siap" style="font-size: 0.6875rem;">Firebase Realtime Active</span>
+          </div>
+          <p style="font-size: 0.75rem; color: var(--text-secondary); line-height: 1.4; margin-bottom: 10px;">
+            Database cloud Firebase aktif secara otomatis untuk semua perangkat. Tidak perlu input kredensial di HP atau device lain; cukup buka link website, riwayat transaksi langsung sinkron realtime!
+          </p>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button type="button" onclick="copyFirebaseRulesSnippet()" class="btn-secondary" style="font-size: 0.75rem; padding: 6px 10px;">
+              <span class="svg-icon" style="width: 12px; height: 12px;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
+                </svg>
+              </span>
+              <span>Salin Aturan Firestore (Rules)</span>
+            </button>
+            <button type="button" onclick="resetToDefaultFirebase()" class="btn-secondary" style="font-size: 0.75rem; padding: 6px 10px;">
+              <span>Reset ke Proyek Default</span>
+            </button>
+          </div>
         </div>
 
         <div class="form-group">
@@ -1115,6 +1047,6 @@ CREATE INDEX IF NOT EXISTS idx_orders_order_number ON orders (order_number);
   </div>
 
   <!-- Standalone Pure JS Engine -->
-  <script src="script.js"></script>
+  <script src="script.js?v=2"></script>
 </body>
 </html>
