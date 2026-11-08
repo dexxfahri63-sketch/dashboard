@@ -271,11 +271,18 @@
             </span>
           </button>
 
-          <select class="outlet-select" id="headerOutletSelect" onchange="appConfig.activeOutlet = this.value; saveConfig(); applyTheme();">
-            <option value="Cabang Utama (Pusat)">Cabang Utama (Pusat)</option>
-            <option value="Cabang Boulevard">Cabang Boulevard</option>
-            <option value="Cabang Kampus">Cabang Kampus</option>
-          </select>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <select class="outlet-select" id="headerOutletSelect" onchange="changeOutlet(this.value)">
+              <!-- Options populated dynamically -->
+            </select>
+            <button type="button" class="btn-icon-square" onclick="openOutletManagerModal()" title="Kelola Cabang / Tambah & Hapus Outlet">
+              <span class="svg-icon" style="width: 15px; height: 15px;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>
+                </svg>
+              </span>
+            </button>
+          </div>
 
           <div class="header-search">
             <span class="header-search-icon">
@@ -761,7 +768,7 @@
         <div class="page-header-row">
           <div>
             <h1 class="page-title">Laporan Keuangan & Omset</h1>
-            <p class="page-subtitle">Rekap omset lunas, piutang laundry, performa pembayaran, dan ekspor CSV</p>
+            <p class="page-subtitle">Analisis performa pendapatan kasir, omset lunas, piutang, dan riwayat transaksi sesuai periode</p>
           </div>
           <button onclick="exportCsvReport()" class="btn-primary">
             <span class="svg-icon" style="width: 14px; height: 14px;">
@@ -769,30 +776,170 @@
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
               </svg>
             </span>
-            <span>Ekspor CSV (Excel)</span>
+            <span id="btnExportCsvLabel">Ekspor CSV (Periode Terpilih)</span>
           </button>
         </div>
 
+        <!-- Filter Bar: Periode & Filter Cabang -->
+        <div class="report-filter-bar">
+          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <span style="font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Periode:</span>
+            <div class="period-btn-group">
+              <button type="button" class="period-btn active" id="btnPeriodAll" onclick="setReportPeriod('all')">Semua (Seterusnya)</button>
+              <button type="button" class="period-btn" id="btnPeriodToday" onclick="setReportPeriod('today')">Hari Ini</button>
+              <button type="button" class="period-btn" id="btnPeriod7d" onclick="setReportPeriod('7d')">7 Hari Terakhir</button>
+              <button type="button" class="period-btn" id="btnPeriod30d" onclick="setReportPeriod('30d')">30 Hari (1 Bulan)</button>
+              <button type="button" class="period-btn" id="btnPeriod90d" onclick="setReportPeriod('90d')">3 Bulan Terakhir</button>
+              <button type="button" class="period-btn" id="btnPeriodCustom" onclick="setReportPeriod('custom')">Kustom</button>
+            </div>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <!-- Filter Cabang -->
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span class="svg-icon" style="width: 14px; height: 14px; color: var(--text-muted);">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>
+                </svg>
+              </span>
+              <select id="reportOutletFilter" class="form-select" style="width: auto; padding: 6px 12px; font-size: 0.75rem;" onchange="renderReportsTab()">
+                <option value="ALL">Semua Cabang</option>
+              </select>
+            </div>
+
+            <!-- Filter Status Bayar -->
+            <select id="reportPaymentStatusFilter" class="form-select" style="width: auto; padding: 6px 12px; font-size: 0.75rem;" onchange="renderReportsTab()">
+              <option value="ALL">Semua Status Bayar</option>
+              <option value="LUNAS">Hanya Lunas</option>
+              <option value="BELUM_LUNAS">Hanya Belum Lunas</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Custom Date Range (Conditional) -->
+        <div id="reportCustomDateRow" style="display: none; background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius-custom); padding: 12px 18px; margin-bottom: 20px; align-items: center; gap: 12px; flex-wrap: wrap;">
+          <span style="font-size: 0.75rem; font-weight: 700; color: var(--text-secondary);">Rentang Tanggal Kustom:</span>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <label style="font-size: 0.75rem; color: var(--text-muted);">Dari:</label>
+            <input type="date" id="reportStartDate" class="form-input" style="width: auto; padding: 5px 10px; font-size: 0.75rem;" onchange="renderReportsTab()" />
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <label style="font-size: 0.75rem; color: var(--text-muted);">Sampai:</label>
+            <input type="date" id="reportEndDate" class="form-input" style="width: auto; padding: 5px 10px; font-size: 0.75rem;" onchange="renderReportsTab()" />
+          </div>
+          <button type="button" class="btn-secondary" style="font-size: 0.6875rem; padding: 5px 10px;" onclick="renderReportsTab()">Terapkan Tanggal</button>
+        </div>
+
+        <!-- Summary Banner -->
+        <div class="report-summary-banner" id="reportSummaryBanner">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="svg-icon" style="width: 16px; height: 16px; color: var(--accent-primary);">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+              </svg>
+            </span>
+            <span id="reportActivePeriodLabel" style="font-weight: 700; color: var(--text-primary);">Periode: Semua Riwayat Transaksi</span>
+            <span style="color: var(--text-muted);">•</span>
+            <span id="reportFilterCountLabel" style="color: var(--accent-primary); font-weight: 700;">0 Transaksi Ditemukan</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 16px; font-size: 0.75rem;">
+            <span>Omset Masuk: <strong id="reportBannerLunas" style="color: #34D399;">Rp 0</strong></span>
+            <span>Piutang: <strong id="reportBannerPiutang" style="color: #FBBF24;">Rp 0</strong></span>
+          </div>
+        </div>
+
+        <!-- 4 Metric Cards -->
         <div class="dashboard-grid">
           <div class="metric-card">
-            <div class="metric-label" style="color: #34D399;">Total Kas Lunas</div>
+            <div class="metric-label" style="color: #34D399;">Total Kas Lunas (Omset Masuk)</div>
             <div class="metric-value" id="reportLunasDisplay" style="color: #34D399; margin-top: 8px;">Rp 0</div>
-            <div class="metric-desc">Uang riil sudah masuk kasir</div>
+            <div class="metric-desc">Dana riil berhasil masuk kas</div>
           </div>
           <div class="metric-card">
             <div class="metric-label" style="color: #FBBF24;">Piutang Belum Bayar</div>
             <div class="metric-value" id="reportBelumLunasDisplay" style="color: #FBBF24; margin-top: 8px;">Rp 0</div>
-            <div class="metric-desc">Dibayar saat cucian diambil</div>
+            <div class="metric-desc">Tagihan belum dilunasi pelanggan</div>
           </div>
           <div class="metric-card">
-            <div class="metric-label">Jumlah Transaksi</div>
+            <div class="metric-label" style="color: #60A5FA;">Total Nilai Transaksi (Gross)</div>
+            <div class="metric-value" id="reportGrossDisplay" style="color: #60A5FA; margin-top: 8px;">Rp 0</div>
+            <div class="metric-desc">Akumulasi total pesanan (Lunas + Piutang)</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Jumlah Nota & Rata-rata</div>
             <div class="metric-value" id="reportTotalTrxDisplay" style="margin-top: 8px;">0 Nota</div>
-            <div class="metric-desc">Total seluruh nota tercatat</div>
+            <div class="metric-desc" id="reportAovDesc">Rata-rata: Rp 0 / nota</div>
           </div>
-          <div class="metric-card">
-            <div class="metric-label">Performa QRIS</div>
-            <div class="metric-value" id="reportCountQris" style="margin-top: 8px;">0 Trx</div>
-            <div class="metric-desc">Pembayaran cashless digital</div>
+        </div>
+
+        <!-- Metode Pembayaran Breakdown Cards -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 24px;">
+          <div style="background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius-custom); padding: 14px 16px;">
+            <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">Metode Tunai (Cash)</div>
+            <div id="reportCashTotalDisplay" style="font-size: 1.125rem; font-weight: 800; color: var(--text-primary); margin: 4px 0;">Rp 0</div>
+            <div id="reportCashCountDisplay" style="font-size: 0.6875rem; color: var(--text-secondary);">0 Transaksi</div>
+          </div>
+          <div style="background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius-custom); padding: 14px 16px;">
+            <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">Metode QRIS Dinamis</div>
+            <div id="reportQrisTotalDisplay" style="font-size: 1.125rem; font-weight: 800; color: var(--text-primary); margin: 4px 0;">Rp 0</div>
+            <div id="reportCountQris" style="font-size: 0.6875rem; color: var(--text-secondary);">0 Transaksi</div>
+          </div>
+          <div style="background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius-custom); padding: 14px 16px;">
+            <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">Transfer Bank</div>
+            <div id="reportTransferTotalDisplay" style="font-size: 1.125rem; font-weight: 800; color: var(--text-primary); margin: 4px 0;">Rp 0</div>
+            <div id="reportTransferCountDisplay" style="font-size: 0.6875rem; color: var(--text-secondary);">0 Transaksi</div>
+          </div>
+        </div>
+
+        <!-- History Table Card -->
+        <div class="report-history-card">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div>
+              <h3 style="font-size: 1rem; font-weight: 800; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+                <span class="svg-icon" style="width: 16px; height: 16px; color: var(--accent-primary);">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+                  </svg>
+                </span>
+                <span>Rincian Riwayat Transaksi Periode</span>
+              </h3>
+              <p style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">Daftar lengkap nota, pelanggan, rincian cucian, dan status pembayaran</p>
+            </div>
+            <span class="badge badge-siap" id="reportTableBadge">Menampilkan Semua</span>
+          </div>
+
+          <div class="report-table-responsive">
+            <table class="report-table">
+              <thead>
+                <tr>
+                  <th>No. Nota</th>
+                  <th>Tanggal & Jam</th>
+                  <th>Pelanggan</th>
+                  <th>Cabang</th>
+                  <th>Rincian Layanan</th>
+                  <th>Total (Rp)</th>
+                  <th>Metode</th>
+                  <th>Status Bayar</th>
+                  <th style="text-align: right;">Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="reportHistoryTableBody">
+                <!-- Rows injected via JS -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Empty State -->
+          <div id="reportEmptyState" style="display: none; padding: 40px 20px; text-align: center;">
+            <div style="width: 48px; height: 48px; border-radius: 12px; background-color: var(--bg-surface); display: inline-flex; align-items: center; justify-content: center; color: var(--text-muted); margin-bottom: 12px;">
+              <span class="svg-icon" style="width: 24px; height: 24px;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+              </span>
+            </div>
+            <div style="font-size: 0.9375rem; font-weight: 700; color: var(--text-primary);">Tidak Ada Transaksi pada Periode Ini</div>
+            <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px;">Coba pilih rentang periode lain atau pilih "Semua (Seterusnya)" untuk melihat riwayat penuh.</div>
           </div>
         </div>
       </section>
@@ -951,6 +1098,29 @@
         <div class="form-group">
           <label class="form-label">Telepon Customer Service</label>
           <input type="text" id="cfgPhone" class="form-input" placeholder="0812-3456-7890" />
+        </div>
+
+        <!-- Manajemen Cabang Laundry -->
+        <div style="background-color: var(--bg-surface); padding: 14px; border-radius: var(--border-radius-custom); border: 1px solid var(--border-color); margin-bottom: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <div style="font-size: 0.8125rem; font-weight: 700; color: #FFFFFF; display: flex; align-items: center; gap: 6px;">
+              <span class="svg-icon" style="width: 14px; height: 14px; color: var(--accent-primary);">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>
+                </svg>
+              </span>
+              <span>Kelola Cabang / Outlet Laundry</span>
+            </div>
+            <button type="button" onclick="closeModal('secretConfigModal'); openOutletManagerModal();" class="btn-primary" style="font-size: 0.6875rem; padding: 4px 10px;">
+              <span>+ Tambah / Hapus Cabang</span>
+            </button>
+          </div>
+          <p style="font-size: 0.6875rem; color: var(--text-secondary); margin-bottom: 8px;">
+            Tambah cabang baru atau hapus cabang lama. Perubahan daftar cabang langsung tersinkron ke semua perangkat.
+          </p>
+          <div id="cfgOutletsSummaryBadges" style="display: flex; flex-wrap: wrap; gap: 6px;">
+            <!-- Populated dynamically -->
+          </div>
         </div>
 
         <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 6px 0;" />
@@ -1258,7 +1428,59 @@
     </div>
   </div>
 
+  <!-- MODAL: KELOLA CABANG & OUTLET LAUNDRY -->
+  <div class="modal-overlay" id="outletManagerModal">
+    <div class="modal-box" style="max-width: 500px;">
+      <div class="modal-header">
+        <h3 class="modal-title">
+          <span class="svg-icon" style="width: 18px; height: 18px; color: var(--accent-primary);">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>
+            </svg>
+          </span>
+          <span>Kelola Cabang & Outlet Laundry</span>
+        </h3>
+        <button onclick="closeModal('outletManagerModal')" class="btn-close">&times;</button>
+      </div>
+
+      <p style="font-size: 0.8125rem; color: var(--text-secondary); margin-bottom: 16px;">
+        Tambah cabang baru atau hapus cabang yang sudah tidak beroperasi. Seluruh perubahan langsung tersinkron ke semua perangkat kasir secara realtime via database cloud.
+      </p>
+
+      <!-- Input Tambah Cabang Baru -->
+      <div style="background-color: var(--bg-surface); padding: 14px; border-radius: var(--border-radius-custom); border: 1px solid var(--border-color); margin-bottom: 16px;">
+        <label class="form-label" style="margin-bottom: 6px;">Tambah Cabang Baru</label>
+        <div style="display: flex; gap: 8px;">
+          <input type="text" id="newOutletNameInput" class="form-input" placeholder="Contoh: Cabang Boulevard, Cabang Dago" onkeydown="if(event.key==='Enter') handleAddOutletFromModal()" />
+          <button type="button" onclick="handleAddOutletFromModal()" class="btn-primary" style="white-space: nowrap; flex-shrink: 0; padding: 8px 14px;">
+            <span class="svg-icon" style="width: 14px; height: 14px;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+            </span>
+            <span>+ Tambah</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- List Cabang Saat Ini -->
+      <div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <label class="form-label" style="margin-bottom: 0;">Daftar Cabang Aktif (<span id="outletCountDisplay">0</span>)</label>
+          <span style="font-size: 0.6875rem; color: var(--text-muted);">Pilih cabang aktif toko</span>
+        </div>
+        <div id="outletManagerListContainer" style="display: flex; flex-direction: column; gap: 8px; max-height: 280px; overflow-y: auto;">
+          <!-- Dynamically generated list items -->
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 14px;">
+        <button onclick="closeModal('outletManagerModal')" class="btn-secondary">Selesai</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Standalone Pure JS Engine -->
-  <script src="script.js?v=4"></script>
+  <script src="script.js?v=5"></script>
 </body>
 </html>

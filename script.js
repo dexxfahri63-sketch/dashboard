@@ -175,6 +175,13 @@ if (!appConfig.firebase || !appConfig.firebase.projectId) {
 if (!appConfig.auth) {
   appConfig.auth = JSON.parse(JSON.stringify(DEFAULT_CONFIG.auth));
 }
+if (!Array.isArray(appConfig.outlets) || appConfig.outlets.length === 0) {
+  appConfig.outlets = JSON.parse(JSON.stringify(DEFAULT_CONFIG.outlets));
+}
+if (!appConfig.activeOutlet || !appConfig.outlets.includes(appConfig.activeOutlet)) {
+  appConfig.activeOutlet = appConfig.outlets[0] || 'Cabang Utama (Pusat)';
+}
+
 
 // Clean Order Storage (Zero auto-reviving dummy data: orders are empty unless fetched from cloud or explicitly saved)
 function getDeletedOrderIds() {
@@ -456,14 +463,179 @@ function applyTheme() {
     }
   }
 
-  // Update Outlet label
-  const outletLabel = document.getElementById('currentOutletDisplay');
-  if (outletLabel) outletLabel.textContent = appConfig.activeOutlet || 'Cabang Utama';
-
-  const headerOutlet = document.getElementById('headerOutletSelect');
-  if (headerOutlet) headerOutlet.value = appConfig.activeOutlet || 'Cabang Utama (Pusat)';
+  // Update Outlet options across header, POS, reports, and sidebar
+  renderOutletOptions();
 
   updateLogoModalPreview();
+}
+
+/**
+ * ====================================================================
+ * CABANG / OUTLET MANAGEMENT ENGINE (Multi-Device Cloud Sync)
+ * ====================================================================
+ */
+
+function renderOutletOptions() {
+  if (!Array.isArray(appConfig.outlets) || appConfig.outlets.length === 0) {
+    appConfig.outlets = JSON.parse(JSON.stringify(DEFAULT_CONFIG.outlets));
+  }
+  if (!appConfig.activeOutlet || !appConfig.outlets.includes(appConfig.activeOutlet)) {
+    appConfig.activeOutlet = appConfig.outlets[0] || 'Cabang Utama (Pusat)';
+  }
+
+  // 1. Header Select
+  const headerSelect = document.getElementById('headerOutletSelect');
+  if (headerSelect) {
+    headerSelect.innerHTML = appConfig.outlets.map(o => 
+      `<option value="${escapeHtml(o)}" ${o === appConfig.activeOutlet ? 'selected' : ''}>${escapeHtml(o)}</option>`
+    ).join('');
+    headerSelect.value = appConfig.activeOutlet;
+  }
+
+  // 2. POS Select
+  const posSelect = document.getElementById('posOutletSelect');
+  if (posSelect) {
+    posSelect.innerHTML = appConfig.outlets.map(o => 
+      `<option value="${escapeHtml(o)}" ${o === appConfig.activeOutlet ? 'selected' : ''}>${escapeHtml(o)}</option>`
+    ).join('');
+    posSelect.value = appConfig.activeOutlet;
+  }
+
+  // 3. Reports Outlet Filter
+  const repSelect = document.getElementById('reportOutletFilter');
+  if (repSelect) {
+    const curVal = repSelect.value || 'ALL';
+    repSelect.innerHTML = `<option value="ALL">Semua Cabang</option>` + appConfig.outlets.map(o => 
+      `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`
+    ).join('');
+    if (curVal === 'ALL' || appConfig.outlets.includes(curVal)) {
+      repSelect.value = curVal;
+    } else {
+      repSelect.value = 'ALL';
+    }
+  }
+
+  // 4. Sidebar Label
+  const sidebarOutlet = document.getElementById('currentOutletDisplay');
+  if (sidebarOutlet) {
+    sidebarOutlet.textContent = appConfig.activeOutlet;
+  }
+
+  // 5. Admin modal badges
+  renderSecretConfigOutletBadges();
+
+  // 6. Outlet Manager list if open
+  renderOutletManagerList();
+}
+
+function changeOutlet(outletName) {
+  if (!appConfig.outlets.includes(outletName)) return;
+  appConfig.activeOutlet = outletName;
+  saveConfig();
+  renderOutletOptions();
+  showToast(`Cabang aktif diubah ke: ${outletName}`);
+}
+
+function openOutletManagerModal() {
+  const inp = document.getElementById('newOutletNameInput');
+  if (inp) inp.value = '';
+  renderOutletManagerList();
+  const modal = document.getElementById('outletManagerModal');
+  if (modal) modal.classList.add('active');
+}
+
+function renderOutletManagerList() {
+  const container = document.getElementById('outletManagerListContainer');
+  const countDisplay = document.getElementById('outletCountDisplay');
+  if (!container) return;
+
+  if (countDisplay) countDisplay.textContent = appConfig.outlets.length;
+
+  container.innerHTML = appConfig.outlets.map(outlet => {
+    const isActive = outlet === appConfig.activeOutlet;
+    return `
+      <div class="outlet-item-card ${isActive ? 'is-active' : ''}">
+        <div class="outlet-name-text">
+          <span class="svg-icon" style="width: 15px; height: 15px; color: ${isActive ? 'var(--accent-primary)' : 'var(--text-muted)'};">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>
+            </svg>
+          </span>
+          <span>${escapeHtml(outlet)}</span>
+          ${isActive ? '<span class="badge badge-siap" style="font-size: 0.625rem; padding: 2px 6px;">Cabang Utama</span>' : ''}
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          ${!isActive ? `
+            <button type="button" onclick="setActiveOutlet('${escapeHtml(outlet)}')" class="btn-secondary" style="font-size: 0.6875rem; padding: 4px 8px;">
+              Jadikan Aktif
+            </button>
+          ` : ''}
+          <button type="button" onclick="deleteOutlet('${escapeHtml(outlet)}')" class="btn-action-icon btn-delete-icon" title="Hapus Cabang" ${appConfig.outlets.length <= 1 ? 'disabled style="opacity:0.35;cursor:not-allowed;"' : ''}>
+            ${ICONS.trash}
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function handleAddOutletFromModal() {
+  const inp = document.getElementById('newOutletNameInput');
+  const name = inp ? inp.value.trim() : '';
+
+  if (!name) {
+    showToast('Masukkan nama cabang terlebih dahulu!');
+    return;
+  }
+
+  const exists = appConfig.outlets.some(o => o.toLowerCase() === name.toLowerCase());
+  if (exists) {
+    showToast(`Cabang "${name}" sudah terdaftar.`);
+    return;
+  }
+
+  appConfig.outlets.push(name);
+  saveConfig();
+  renderOutletOptions();
+  saveBrandingToCloud();
+  if (inp) inp.value = '';
+  showToast(`Cabang "${name}" berhasil ditambahkan dan disinkronkan ke seluruh device!`);
+}
+
+function deleteOutlet(outletName) {
+  if (appConfig.outlets.length <= 1) {
+    showToast('Minimal harus ada 1 cabang toko! Tidak dapat menghapus cabang ini.');
+    return;
+  }
+
+  appConfig.outlets = appConfig.outlets.filter(o => o !== outletName);
+  if (appConfig.activeOutlet === outletName) {
+    appConfig.activeOutlet = appConfig.outlets[0];
+  }
+
+  saveConfig();
+  renderOutletOptions();
+  saveBrandingToCloud();
+  showToast(`Cabang "${outletName}" berhasil dihapus.`);
+}
+
+function setActiveOutlet(outletName) {
+  if (!appConfig.outlets.includes(outletName)) return;
+  appConfig.activeOutlet = outletName;
+  saveConfig();
+  renderOutletOptions();
+  saveBrandingToCloud();
+  showToast(`Cabang aktif diubah ke: ${outletName}`);
+}
+
+function renderSecretConfigOutletBadges() {
+  const container = document.getElementById('cfgOutletsSummaryBadges');
+  if (!container || !Array.isArray(appConfig.outlets)) return;
+
+  container.innerHTML = appConfig.outlets.map(o => {
+    const isAct = o === appConfig.activeOutlet;
+    return `<span class="badge ${isAct ? 'badge-siap' : 'badge-cuci'}" style="font-size: 0.6875rem;">${escapeHtml(o)} ${isAct ? '(Aktif)' : ''}</span>`;
+  }).join('');
 }
 
 function handleLogoFileInput(event) {
@@ -582,6 +754,7 @@ function deleteOrder(orderId) {
   deleteOrderFromCloud(orderId, orderNum);
   renderDashboard();
   renderOrdersTab();
+  if (currentTab === 'reports') renderReportsTab();
   showToast(`Transaksi ${orderNum} berhasil dihapus permanen.`);
 }
 
@@ -614,6 +787,7 @@ function executeClearAllOrders() {
   closeModal('confirmDeleteModal');
   renderDashboard();
   renderOrdersTab();
+  if (currentTab === 'reports') renderReportsTab();
   showToast('Semua data transaksi berhasil dihapus permanen dari cloud & browser!');
 }
 
@@ -630,6 +804,7 @@ function loadDemoOrders() {
   }
   renderDashboard();
   renderOrdersTab();
+  if (currentTab === 'reports') renderReportsTab();
   showToast('Data contoh berhasil dimuat.');
 }
 
@@ -1280,25 +1455,255 @@ function deleteService(srvId) {
   showToast('Layanan dihapus.');
 }
 
-function renderReportsTab() {
-  const lunas = appOrders.filter(o => o.paymentStatus === 'LUNAS').reduce((s, o) => s + o.totalPrice, 0);
-  const belumLunas = appOrders.filter(o => o.paymentStatus === 'BELUM_LUNAS').reduce((s, o) => s + o.totalPrice, 0);
-  const countCash = appOrders.filter(o => o.paymentMethod === 'CASH').length;
-  const countQris = appOrders.filter(o => o.paymentMethod === 'QRIS').length;
+/**
+ * ====================================================================
+ * FINANCIAL REPORTS & PERIOD HISTORY ENGINE
+ * (History 7 Hari, 1 Bulan, 3 Bulan, Hari Ini, Semua / Seterusnya)
+ * ====================================================================
+ */
 
-  document.getElementById('reportLunasDisplay').textContent = formatRupiah(lunas);
-  document.getElementById('reportBelumLunasDisplay').textContent = formatRupiah(belumLunas);
-  document.getElementById('reportTotalTrxDisplay').textContent = `${appOrders.length} Nota`;
-  document.getElementById('reportCountQris').textContent = `${countQris} Transaksi`;
+let currentReportPeriod = 'all'; // 'all', 'today', '7d', '30d', '90d', 'custom'
+
+function setReportPeriod(period) {
+  currentReportPeriod = period;
+
+  // Update active pill button
+  const buttons = {
+    'all': 'btnPeriodAll',
+    'today': 'btnPeriodToday',
+    '7d': 'btnPeriod7d',
+    '30d': 'btnPeriod30d',
+    '90d': 'btnPeriod90d',
+    'custom': 'btnPeriodCustom'
+  };
+
+  Object.entries(buttons).forEach(([key, id]) => {
+    const btn = document.getElementById(id);
+    if (btn) btn.classList.toggle('active', key === period);
+  });
+
+  // Toggle custom date inputs
+  const customRow = document.getElementById('reportCustomDateRow');
+  if (customRow) {
+    customRow.style.display = period === 'custom' ? 'flex' : 'none';
+  }
+
+  // Update export button label
+  const exportLabel = document.getElementById('btnExportCsvLabel');
+  if (exportLabel) {
+    const labels = {
+      'all': 'Ekspor CSV (Semua)',
+      'today': 'Ekspor CSV (Hari Ini)',
+      '7d': 'Ekspor CSV (7 Hari)',
+      '30d': 'Ekspor CSV (1 Bulan)',
+      '90d': 'Ekspor CSV (3 Bulan)',
+      'custom': 'Ekspor CSV (Kustom)'
+    };
+    exportLabel.textContent = labels[period] || 'Ekspor CSV';
+  }
+
+  renderReportsTab();
+}
+
+function parseOrderDate(dateStr) {
+  if (!dateStr) return new Date(0);
+  const clean = dateStr.replace(' ', 'T');
+  const d = new Date(clean);
+  if (!isNaN(d.getTime())) return d;
+  return new Date(dateStr);
+}
+
+function filterOrdersForReport() {
+  const now = new Date();
+  const nowTime = now.getTime();
+  const outletFilter = document.getElementById('reportOutletFilter')?.value || 'ALL';
+  const statusFilter = document.getElementById('reportPaymentStatusFilter')?.value || 'ALL';
+  const customStart = document.getElementById('reportStartDate')?.value;
+  const customEnd = document.getElementById('reportEndDate')?.value;
+
+  return appOrders.filter(o => {
+    // Outlet filter
+    if (outletFilter !== 'ALL' && o.outlet !== outletFilter) return false;
+
+    // Status filter
+    if (statusFilter !== 'ALL' && o.paymentStatus !== statusFilter) return false;
+
+    // Period filter
+    const orderDate = parseOrderDate(o.createdAt);
+    const orderTime = orderDate.getTime();
+
+    if (currentReportPeriod === 'today') {
+      const pad = n => String(n).padStart(2, '0');
+      const todayPrefix = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+      return (o.createdAt || '').startsWith(todayPrefix);
+    } else if (currentReportPeriod === '7d') {
+      const sevenDaysAgo = nowTime - (7 * 24 * 60 * 60 * 1000);
+      return orderTime >= sevenDaysAgo;
+    } else if (currentReportPeriod === '30d') {
+      const thirtyDaysAgo = nowTime - (30 * 24 * 60 * 60 * 1000);
+      return orderTime >= thirtyDaysAgo;
+    } else if (currentReportPeriod === '90d') {
+      const ninetyDaysAgo = nowTime - (90 * 24 * 60 * 60 * 1000);
+      return orderTime >= ninetyDaysAgo;
+    } else if (currentReportPeriod === 'custom') {
+      if (customStart) {
+        const start = new Date(customStart + 'T00:00:00').getTime();
+        if (orderTime < start) return false;
+      }
+      if (customEnd) {
+        const end = new Date(customEnd + 'T23:59:59').getTime();
+        if (orderTime > end) return false;
+      }
+      return true;
+    }
+    // 'all'
+    return true;
+  });
+}
+
+function renderReportsTab() {
+  const filtered = filterOrdersForReport();
+
+  const lunasOrders = filtered.filter(o => o.paymentStatus === 'LUNAS');
+  const belumLunasOrders = filtered.filter(o => o.paymentStatus === 'BELUM_LUNAS');
+
+  const lunas = lunasOrders.reduce((s, o) => s + o.totalPrice, 0);
+  const belumLunas = belumLunasOrders.reduce((s, o) => s + o.totalPrice, 0);
+  const gross = lunas + belumLunas;
+  const countTotal = filtered.length;
+  const aov = countTotal > 0 ? Math.round(gross / countTotal) : 0;
+
+  const cashOrders = filtered.filter(o => o.paymentMethod === 'CASH');
+  const qrisOrders = filtered.filter(o => o.paymentMethod === 'QRIS');
+  const transferOrders = filtered.filter(o => o.paymentMethod === 'TRANSFER');
+
+  const cashTotal = cashOrders.reduce((s, o) => s + o.totalPrice, 0);
+  const qrisTotal = qrisOrders.reduce((s, o) => s + o.totalPrice, 0);
+  const transferTotal = transferOrders.reduce((s, o) => s + o.totalPrice, 0);
+
+  // Update Metrics
+  const lunasEl = document.getElementById('reportLunasDisplay');
+  const belumLunasEl = document.getElementById('reportBelumLunasDisplay');
+  const grossEl = document.getElementById('reportGrossDisplay');
+  const totalTrxEl = document.getElementById('reportTotalTrxDisplay');
+  const aovEl = document.getElementById('reportAovDesc');
+
+  if (lunasEl) lunasEl.textContent = formatRupiah(lunas);
+  if (belumLunasEl) belumLunasEl.textContent = formatRupiah(belumLunas);
+  if (grossEl) grossEl.textContent = formatRupiah(gross);
+  if (totalTrxEl) totalTrxEl.textContent = `${countTotal} Nota`;
+  if (aovEl) aovEl.textContent = `Rata-rata: ${formatRupiah(aov)} / nota`;
+
+  // Payment Breakdown
+  const cashTotEl = document.getElementById('reportCashTotalDisplay');
+  const cashCntEl = document.getElementById('reportCashCountDisplay');
+  const qrisTotEl = document.getElementById('reportQrisTotalDisplay');
+  const qrisCntEl = document.getElementById('reportCountQris');
+  const trfTotEl = document.getElementById('reportTransferTotalDisplay');
+  const trfCntEl = document.getElementById('reportTransferCountDisplay');
+
+  if (cashTotEl) cashTotEl.textContent = formatRupiah(cashTotal);
+  if (cashCntEl) cashCntEl.textContent = `${cashOrders.length} Transaksi`;
+  if (qrisTotEl) qrisTotEl.textContent = formatRupiah(qrisTotal);
+  if (qrisCntEl) qrisCntEl.textContent = `${qrisOrders.length} Transaksi`;
+  if (trfTotEl) trfTotEl.textContent = formatRupiah(transferTotal);
+  if (trfCntEl) trfCntEl.textContent = `${transferOrders.length} Transaksi`;
+
+  // Period label names
+  const periodNames = {
+    'all': 'Semua Riwayat Transaksi (Seterusnya)',
+    'today': 'Hari Ini',
+    '7d': '7 Hari Terakhir',
+    '30d': '30 Hari Terakhir (1 Bulan)',
+    '90d': '90 Hari Terakhir (3 Bulan)',
+    'custom': 'Rentang Kustom'
+  };
+
+  const periodLabelEl = document.getElementById('reportActivePeriodLabel');
+  const countLabelEl = document.getElementById('reportFilterCountLabel');
+  const bannerLunasEl = document.getElementById('reportBannerLunas');
+  const bannerPiutangEl = document.getElementById('reportBannerPiutang');
+  const tableBadgeEl = document.getElementById('reportTableBadge');
+
+  if (periodLabelEl) periodLabelEl.textContent = `Periode: ${periodNames[currentReportPeriod] || 'Semua'}`;
+  if (countLabelEl) countLabelEl.textContent = `${countTotal} Transaksi Terfilter`;
+  if (bannerLunasEl) bannerLunasEl.textContent = formatRupiah(lunas);
+  if (bannerPiutangEl) bannerPiutangEl.textContent = formatRupiah(belumLunas);
+  if (tableBadgeEl) tableBadgeEl.textContent = `${countTotal} Nota Terpilih`;
+
+  // Render Table Rows
+  const tbody = document.getElementById('reportHistoryTableBody');
+  const emptyState = document.getElementById('reportEmptyState');
+
+  if (tbody) {
+    if (filtered.length === 0) {
+      tbody.innerHTML = '';
+      if (emptyState) emptyState.style.display = 'block';
+    } else {
+      if (emptyState) emptyState.style.display = 'none';
+      tbody.innerHTML = filtered.map(o => {
+        const itemsSummary = o.items.map(it => `${it.name} (${it.qty} ${it.unit})`).join(', ');
+        const isLunas = o.paymentStatus === 'LUNAS';
+
+        return `
+          <tr>
+            <td>
+              <div style="font-weight: 700; color: var(--text-primary); font-family: monospace;">${escapeHtml(o.orderNumber)}</div>
+            </td>
+            <td>
+              <div style="color: var(--text-secondary); font-size: 0.75rem;">${escapeHtml(o.createdAt)}</div>
+            </td>
+            <td>
+              <div style="font-weight: 700; color: var(--text-primary);">${escapeHtml(o.customerName)}</div>
+              <div style="font-size: 0.6875rem; color: var(--text-muted);">${escapeHtml(o.customerPhone || '-')}</div>
+            </td>
+            <td>
+              <span class="badge badge-cuci" style="font-size: 0.6875rem;">${escapeHtml(o.outlet || 'Pusat')}</span>
+            </td>
+            <td>
+              <div style="max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-secondary); font-size: 0.75rem;" title="${escapeHtml(itemsSummary)}">
+                ${escapeHtml(itemsSummary)}
+              </div>
+            </td>
+            <td>
+              <div style="font-weight: 800; font-family: monospace; color: var(--text-primary);">${formatRupiah(o.totalPrice)}</div>
+            </td>
+            <td>
+              <span class="badge ${o.paymentMethod === 'QRIS' ? 'badge-selesai' : o.paymentMethod === 'TRANSFER' ? 'badge-setrika' : 'badge-cuci'}" style="font-size: 0.6875rem;">
+                ${escapeHtml(o.paymentMethod)}
+              </span>
+            </td>
+            <td>
+              <span class="badge ${isLunas ? 'badge-siap' : 'badge-proses'}" style="font-size: 0.6875rem;">
+                ${isLunas ? 'Lunas' : 'Belum Lunas'}
+              </span>
+            </td>
+            <td style="text-align: right;">
+              <div style="display: inline-flex; gap: 6px;">
+                <button type="button" onclick="openWhatsAppModal('${o.id}')" class="btn-action-icon" title="Kirim Nota WhatsApp" style="color: #34D399;">
+                  ${ICONS.whatsapp}
+                </button>
+                <button type="button" onclick="printReceipt('${o.id}')" class="btn-action-icon" title="Cetak Struk Thermal" style="color: var(--text-primary);">
+                  ${ICONS.printer}
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+  }
 }
 
 function exportCsvReport() {
-  if (appOrders.length === 0) {
-    showToast('Belum ada transaksi untuk diekspor!');
+  const filtered = filterOrdersForReport();
+  if (filtered.length === 0) {
+    showToast('Tidak ada transaksi pada filter periode ini untuk diekspor!');
     return;
   }
+
   const headers = ['No. Nota', 'Tanggal', 'Pelanggan', 'No. HP', 'Cabang', 'Total', 'Metode Bayar', 'Status Bayar', 'Status Pengerjaan'];
-  const rows = appOrders.map(o => [
+  const rows = filtered.map(o => [
     `"${o.orderNumber}"`,
     `"${o.createdAt}"`,
     `"${o.customerName}"`,
@@ -1309,13 +1714,15 @@ function exportCsvReport() {
     `"${o.paymentStatus}"`,
     `"${o.status}"`
   ]);
+
   const csv = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
   const link = document.createElement('a');
   link.setAttribute('href', encodeURI(csv));
-  link.setAttribute('download', `laporan_laundry_${Date.now()}.csv`);
+  link.setAttribute('download', `laporan_keuangan_${currentReportPeriod}_${new Date().toISOString().substring(0, 10)}.csv`);
   document.body.appendChild(link);
   link.click();
   link.remove();
+  showToast(`Berhasil mengekspor ${filtered.length} transaksi (${currentReportPeriod}) ke CSV.`);
 }
 
 // -------------------------------------------------------------
@@ -1468,6 +1875,7 @@ function setupFirestoreRealtimeListener() {
         saveOrders();
         renderDashboard();
         renderOrdersTab();
+        if (currentTab === 'reports') renderReportsTab();
       }
 
       updateCloudStatusBadge(true, 'Firebase: Terhubung (Realtime)');
@@ -1525,11 +1933,22 @@ function setupFirestoreBrandingListener() {
             appConfig.theme.accentHover = data.accentColor;
             updated = true;
           }
+          if (Array.isArray(data.outlets) && data.outlets.length > 0 && JSON.stringify(data.outlets) !== JSON.stringify(appConfig.outlets)) {
+            appConfig.outlets = data.outlets;
+            renderOutletOptions();
+            updated = true;
+          }
+          if (data.activeOutlet && data.activeOutlet !== appConfig.activeOutlet) {
+            appConfig.activeOutlet = data.activeOutlet;
+            renderOutletOptions();
+            updated = true;
+          }
 
           if (updated) {
             saveConfig();
             applyTheme();
             if (currentTab === 'dashboard') renderDashboard();
+            if (currentTab === 'reports') renderReportsTab();
           }
         }
       }
@@ -1542,7 +1961,7 @@ function setupFirestoreBrandingListener() {
 }
 
 /**
- * Save Branding (Business Name, Theme, and Custom Logo) to Firestore
+ * Save Branding (Business Name, Theme, Outlets, and Custom Logo) to Firestore
  */
 async function saveBrandingToCloud() {
   if (!firestoreDb) return;
@@ -1557,6 +1976,8 @@ async function saveBrandingToCloud() {
       whatsapp: appConfig.whatsapp || '',
       address: appConfig.address || '',
       accentColor: (appConfig.theme && appConfig.theme.accentColor) || '#0D9488',
+      outlets: appConfig.outlets || DEFAULT_CONFIG.outlets,
+      activeOutlet: appConfig.activeOutlet || DEFAULT_CONFIG.activeOutlet,
       updatedAt: new Date().toISOString()
     });
   } catch (err) {
@@ -1803,6 +2224,7 @@ function openSecretConfigModal() {
 
   setVal('cfgSecretPin', appConfig.secretPin || 'admin123');
   setVal('cfgWhatsappTpl', appConfig.whatsappTemplate || DEFAULT_CONFIG.whatsappTemplate);
+  renderSecretConfigOutletBadges();
 
   modal.classList.add('active');
 }
