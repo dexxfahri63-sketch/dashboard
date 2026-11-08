@@ -20,7 +20,7 @@
   <div id="loginScreen" class="login-wrapper">
     <div class="login-card">
       <div class="login-brand-header">
-        <div class="login-brand-icon">
+        <div class="login-brand-icon" id="loginBrandIcon">
           <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect width="18" height="18" x="3" y="3" rx="3"/>
             <circle cx="12" cy="13" r="5"/>
@@ -870,6 +870,43 @@
       </div>
 
       <div style="display: flex; flex-direction: column; gap: 14px;">
+        <!-- Logo Toko Laundry (Upload File Gambar) -->
+        <div style="background-color: var(--bg-surface); padding: 14px; border-radius: var(--border-radius-custom); border: 1px solid var(--border-color);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <label class="form-label" style="font-weight: 700; color: #FFFFFF; margin-bottom: 0;">Logo Web Toko (Upload File)</label>
+            <span style="font-size: 0.6875rem; color: #34D399; font-weight: 700;">Sinkron Semua Device</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+            <!-- Logo Preview Box -->
+            <div id="cfgLogoPreviewBox" style="width: 56px; height: 56px; border-radius: 12px; background-color: var(--bg-card); border: 2px dashed var(--border-color); display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; padding: 4px;">
+              <div id="cfgLogoPreviewContent" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
+                <!-- Current logo preview -->
+              </div>
+            </div>
+
+            <!-- Upload Controls -->
+            <div style="flex: 1; min-width: 200px;">
+              <input type="file" id="cfgLogoFileInput" accept="image/png, image/jpeg, image/jpg, image/svg+xml, image/webp" style="display: none;" onchange="handleLogoFileInput(event)" />
+              <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <button type="button" onclick="document.getElementById('cfgLogoFileInput').click()" class="btn-primary" style="font-size: 0.75rem; padding: 7px 12px;">
+                  <span class="svg-icon" style="width: 14px; height: 14px;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                  </span>
+                  <span>Pilih File Logo</span>
+                </button>
+                <button type="button" id="btnResetLogo" onclick="resetToDefaultLogo()" class="btn-secondary" style="font-size: 0.75rem; padding: 7px 10px;">
+                  <span>Gunakan Ikon Bawaan</span>
+                </button>
+              </div>
+              <div style="font-size: 0.6875rem; color: var(--text-muted); margin-top: 6px;">
+                Mendukung PNG transparan, JPG, SVG, WebP. Logo otomatis muncul di Sidebar, Halaman Login, dan Struk Kasir.
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
           <div class="form-group">
             <label class="form-label">Nama Bisnis (Awalan)</label>
@@ -1222,6 +1259,6 @@
   </div>
 
   <!-- Standalone Pure JS Engine -->
-  <script src="script.js?v=3"></script>
+  <script src="script.js?v=4"></script>
 </body>
 </html>

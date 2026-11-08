@@ -30,6 +30,7 @@ const ICONS = {
 
 // Default Configuration
 const DEFAULT_CONFIG = {
+  customLogo: null,
   businessName: 'DEXX',
   businessNameAccent: 'LAUNDRY',
   tagline: 'Solusi Cepat, Wangi & Bersih Higienis',
@@ -381,6 +382,8 @@ function escapeHtml(text) {
 }
 
 // Dynamic Theme & Branding Applicator
+let tempLogoData = null;
+
 function applyTheme() {
   const root = document.documentElement;
   const theme = appConfig.theme || {};
@@ -401,12 +404,142 @@ function applyTheme() {
     brandEl.innerHTML = `${brandName}<span class="brand-accent" id="brandAccentDisplay">${brandAccent}</span>`;
   }
 
+  const loginTitleEl = document.getElementById('loginBrandTitle');
+  if (loginTitleEl) {
+    loginTitleEl.innerHTML = `${brandName}<span class="brand-accent">${brandAccent}</span>`;
+  }
+
+  // Update Brand Logo (Custom uploaded file or default SVG)
+  const defaultSidebarSvg = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect width="18" height="18" x="3" y="3" rx="3"/>
+    <circle cx="12" cy="13" r="5"/>
+    <path d="M12 10a3 3 0 0 0-3 3"/>
+    <circle cx="7" cy="7" r="1" fill="currentColor"/>
+    <circle cx="10" cy="7" r="1" fill="currentColor"/>
+  </svg>`;
+
+  const defaultLoginSvg = `<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect width="18" height="18" x="3" y="3" rx="3"/>
+    <circle cx="12" cy="13" r="5"/>
+    <path d="M12 10a3 3 0 0 0-3 3"/>
+    <circle cx="7" cy="7" r="1" fill="currentColor"/>
+    <circle cx="10" cy="7" r="1" fill="currentColor"/>
+  </svg>`;
+
+  const sidebarIcon = document.getElementById('sidebarBrandIcon');
+  if (sidebarIcon) {
+    if (appConfig.customLogo) {
+      sidebarIcon.innerHTML = `<img src="${appConfig.customLogo}" alt="Logo" style="width:100%;height:100%;object-fit:contain;border-radius:8px;">`;
+      sidebarIcon.style.background = 'transparent';
+      sidebarIcon.style.boxShadow = 'none';
+      sidebarIcon.style.padding = '0';
+    } else {
+      sidebarIcon.innerHTML = defaultSidebarSvg;
+      sidebarIcon.style.background = 'linear-gradient(135deg, var(--accent-primary), #0f766e)';
+      sidebarIcon.style.boxShadow = '0 4px 12px rgba(13, 148, 136, 0.3)';
+      sidebarIcon.style.padding = '';
+    }
+  }
+
+  const loginIcon = document.getElementById('loginBrandIcon');
+  if (loginIcon) {
+    if (appConfig.customLogo) {
+      loginIcon.innerHTML = `<img src="${appConfig.customLogo}" alt="Logo" style="width:100%;height:100%;object-fit:contain;border-radius:12px;">`;
+      loginIcon.style.background = 'transparent';
+      loginIcon.style.boxShadow = 'none';
+      loginIcon.style.padding = '0';
+    } else {
+      loginIcon.innerHTML = defaultLoginSvg;
+      loginIcon.style.background = 'linear-gradient(135deg, var(--accent-primary), #0f766e)';
+      loginIcon.style.boxShadow = '0 8px 16px -2px rgba(13, 148, 136, 0.4)';
+      loginIcon.style.padding = '';
+    }
+  }
+
   // Update Outlet label
   const outletLabel = document.getElementById('currentOutletDisplay');
   if (outletLabel) outletLabel.textContent = appConfig.activeOutlet || 'Cabang Utama';
 
   const headerOutlet = document.getElementById('headerOutletSelect');
   if (headerOutlet) headerOutlet.value = appConfig.activeOutlet || 'Cabang Utama (Pusat)';
+
+  updateLogoModalPreview();
+}
+
+function handleLogoFileInput(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+
+  if (!file.type.startsWith('image/')) {
+    showToast('Pilih file gambar yang valid (PNG, JPG, SVG, WebP).');
+    return;
+  }
+
+  if (file.size > 6 * 1024 * 1024) {
+    showToast('Ukuran file maksimal 6MB.');
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const rawData = e.target.result;
+    if (file.type === 'image/svg+xml') {
+      tempLogoData = rawData;
+      updateLogoModalPreview(tempLogoData);
+      showToast('Logo SVG siap disimpan!');
+      return;
+    }
+
+    // Canvas compression to max 256px
+    const img = new Image();
+    img.onload = function() {
+      const maxDim = 256;
+      let w = img.width;
+      let h = img.height;
+      if (w > maxDim || h > maxDim) {
+        if (w > h) {
+          h = Math.round((h * maxDim) / w);
+          w = maxDim;
+        } else {
+          w = Math.round((w * maxDim) / h);
+          h = maxDim;
+        }
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+
+      const mime = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+      tempLogoData = canvas.toDataURL(mime, 0.9);
+      updateLogoModalPreview(tempLogoData);
+      showToast('Logo berhasil dipilih! Klik "Simpan Konfigurasi" untuk menerapkan.');
+    };
+    img.src = rawData;
+  };
+  reader.readAsDataURL(file);
+}
+
+function resetToDefaultLogo() {
+  tempLogoData = null;
+  const fileInp = document.getElementById('cfgLogoFileInput');
+  if (fileInp) fileInp.value = '';
+  updateLogoModalPreview(null);
+  showToast('Logo diatur kembali ke ikon default.');
+}
+
+function updateLogoModalPreview(logoUrl) {
+  const previewBox = document.getElementById('cfgLogoPreviewContent');
+  if (!previewBox) return;
+
+  const current = logoUrl !== undefined ? logoUrl : (tempLogoData !== null ? tempLogoData : (appConfig.customLogo || null));
+  if (current) {
+    previewBox.innerHTML = `<img src="${current}" alt="Preview" style="width:100%;height:100%;object-fit:contain;border-radius:8px;">`;
+  } else {
+    previewBox.innerHTML = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted);"><rect width="18" height="18" x="3" y="3" rx="3"/><circle cx="12" cy="13" r="5"/><path d="M12 10a3 3 0 0 0-3 3"/><circle cx="7" cy="7" r="1" fill="currentColor"/><circle cx="10" cy="7" r="1" fill="currentColor"/></svg>`;
+  }
 }
 
 // Tab Switching
@@ -1229,6 +1362,7 @@ function initFirebase() {
 
     updateCloudStatusBadge(true, 'Firebase: Terhubung (Realtime)');
     setupFirestoreRealtimeListener();
+    setupFirestoreBrandingListener();
   } catch (err) {
     console.error('Firebase initialization error:', err);
     updateCloudStatusBadge(false, 'Firebase: Offline (Lokal)');
@@ -1252,6 +1386,28 @@ function updateCloudStatusBadge(isOnline, customText) {
     badge.classList.add('offline');
     text.textContent = customText || 'Firebase: Mode Offline';
   }
+}
+
+/**
+ * Compare two order arrays to avoid unnecessary DOM updates (Anti-Flicker Engine)
+ */
+function ordersAreEqual(a, b) {
+  if (!a || !b) return false;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const oA = a[i];
+    const oB = b[i];
+    if (oA.id !== oB.id ||
+        oA.status !== oB.status ||
+        oA.paymentStatus !== oB.paymentStatus ||
+        oA.totalPrice !== oB.totalPrice ||
+        oA.orderNumber !== oB.orderNumber ||
+        oA.customerName !== oB.customerName ||
+        oA.outlet !== oB.outlet) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /**
@@ -1306,26 +1462,9 @@ function setupFirestoreRealtimeListener() {
       // Sort newest first
       cloudOrders.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
 
-      // Filter out any orders that were explicitly deleted by the user
-      const deletedIds = getDeletedOrderIds();
-
-      // If Firestore still contains an order that was marked deleted locally, purge it from Firestore
-      cloudOrders.forEach((ord) => {
-        if (deletedIds.includes(ord.id)) {
-          deleteOrderFromCloud(ord.id, ord.orderNumber);
-        }
-      });
-
-      const activeCloudOrders = cloudOrders.filter(ord => !deletedIds.includes(ord.id));
-
-      if (activeCloudOrders.length > 0) {
-        appOrders = activeCloudOrders;
-        saveOrders();
-        renderDashboard();
-        renderOrdersTab();
-      } else {
-        // If Firestore is empty or all orders were deleted, NEVER auto-seed dummy data!
-        appOrders = [];
+      // Anti-flicker: Only update state & DOM if orders have actually changed!
+      if (!ordersAreEqual(appOrders, cloudOrders)) {
+        appOrders = cloudOrders;
         saveOrders();
         renderDashboard();
         renderOrdersTab();
@@ -1343,6 +1482,85 @@ function setupFirestoreRealtimeListener() {
     });
   } catch (err) {
     console.error('Error starting Firestore listener:', err);
+  }
+}
+
+/**
+ * Realtime Branding & Logo Sync across all connected devices
+ */
+let firestoreBrandingUnsubscribe = null;
+
+function setupFirestoreBrandingListener() {
+  if (!firestoreDb) return;
+
+  if (firestoreBrandingUnsubscribe) {
+    try { firestoreBrandingUnsubscribe(); } catch (e) {}
+  }
+
+  try {
+    firestoreBrandingUnsubscribe = firestoreDb.collection('settings').doc('branding').onSnapshot((doc) => {
+      if (doc && doc.exists) {
+        const data = doc.data();
+        if (data) {
+          let updated = false;
+          if (data.customLogo !== undefined && data.customLogo !== appConfig.customLogo) {
+            appConfig.customLogo = data.customLogo;
+            updated = true;
+          }
+          if (data.businessName && data.businessName !== appConfig.businessName) {
+            appConfig.businessName = data.businessName;
+            updated = true;
+          }
+          if (data.businessNameAccent && data.businessNameAccent !== appConfig.businessNameAccent) {
+            appConfig.businessNameAccent = data.businessNameAccent;
+            updated = true;
+          }
+          if (data.tagline !== undefined && data.tagline !== appConfig.tagline) {
+            appConfig.tagline = data.tagline;
+            updated = true;
+          }
+          if (data.accentColor && (!appConfig.theme || appConfig.theme.accentColor !== data.accentColor)) {
+            if (!appConfig.theme) appConfig.theme = {};
+            appConfig.theme.accentColor = data.accentColor;
+            appConfig.theme.accentHover = data.accentColor;
+            updated = true;
+          }
+
+          if (updated) {
+            saveConfig();
+            applyTheme();
+            if (currentTab === 'dashboard') renderDashboard();
+          }
+        }
+      }
+    }, (err) => {
+      console.warn('Branding sync notice:', err.message);
+    });
+  } catch (err) {
+    console.warn('Error starting branding listener:', err);
+  }
+}
+
+/**
+ * Save Branding (Business Name, Theme, and Custom Logo) to Firestore
+ */
+async function saveBrandingToCloud() {
+  if (!firestoreDb) return;
+
+  try {
+    await firestoreDb.collection('settings').doc('branding').set({
+      customLogo: appConfig.customLogo || null,
+      businessName: appConfig.businessName || 'DEXX',
+      businessNameAccent: appConfig.businessNameAccent || 'LAUNDRY',
+      tagline: appConfig.tagline || '',
+      phone: appConfig.phone || '',
+      whatsapp: appConfig.whatsapp || '',
+      address: appConfig.address || '',
+      accentColor: (appConfig.theme && appConfig.theme.accentColor) || '#0D9488',
+      updatedAt: new Date().toISOString()
+    });
+  } catch (err) {
+    console.warn('Could not sync branding to cloud:', err.message);
   }
 }
 
@@ -1580,6 +1798,9 @@ function openSecretConfigModal() {
   setVal('cfgAdminUsername', auth.adminUsername || 'admin');
   setVal('cfgAdminPassword', auth.adminPassword || 'admin123');
 
+  tempLogoData = appConfig.customLogo || null;
+  updateLogoModalPreview(tempLogoData);
+
   setVal('cfgSecretPin', appConfig.secretPin || 'admin123');
   setVal('cfgWhatsappTpl', appConfig.whatsappTemplate || DEFAULT_CONFIG.whatsappTemplate);
 
@@ -1592,6 +1813,7 @@ function saveSecretConfigFromModal() {
     return el && el.value ? el.value.trim() : fallback;
   };
 
+  appConfig.customLogo = tempLogoData || null;
   appConfig.businessName = getVal('cfgBusinessName', 'DEXX');
   appConfig.businessNameAccent = getVal('cfgBusinessAccent', 'LAUNDRY');
   appConfig.tagline = getVal('cfgTagline', '');
@@ -1620,10 +1842,12 @@ function saveSecretConfigFromModal() {
   appConfig.whatsappTemplate = getVal('cfgWhatsappTpl', DEFAULT_CONFIG.whatsappTemplate);
 
   saveConfig();
+  applyTheme();
+  saveBrandingToCloud();
   initFirebase();
   renderDashboard();
   closeModal('secretConfigModal');
-  showToast('Konfigurasi klien, akun login, & Firebase berhasil disimpan!');
+  showToast('Konfigurasi logo, branding & Firebase berhasil disimpan dan disinkronkan ke semua device!');
 }
 
 function applyPresetColor(colorHex) {
@@ -1699,6 +1923,7 @@ function printReceipt(orderId) {
 
     receiptBody.innerHTML = `
       <div style="text-align: center; margin-bottom: 8px;">
+        ${appConfig.customLogo ? `<img src="${appConfig.customLogo}" style="max-height: 40px; max-width: 120px; object-fit: contain; margin-bottom: 4px;" /><br>` : ''}
         <h2 style="font-size: 15px; margin: 0; font-weight: 800; letter-spacing: 0.5px;">${escapeHtml(appConfig.businessName)} ${escapeHtml(appConfig.businessNameAccent)}</h2>
         <div style="font-size: 10px; margin-top: 2px;">${escapeHtml(appConfig.tagline)}</div>
         <div style="font-size: 10px; color: #555; margin-top: 2px;">${escapeHtml(appConfig.address)}</div>
